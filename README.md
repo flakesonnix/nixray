@@ -236,8 +236,9 @@ nix flake check -L
 nix develop
 cmake -S . -B build
 cmake --build build
-xvfb-run -a python3 tests/test_plugin.py \
-  --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so"
+env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a python3 tests/test_plugin.py \
+  --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
+  --capture-library "$PWD/build/nixray-test-capture.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev
@@ -246,6 +247,8 @@ works without a GPU. Package checks compile the real plugin and run evaluator
 tests plus actual OpenGL rendering under Xvfb; an install check also exercises
 the wrapped launcher. Tests generate tiny PNG/bitmap-font fixtures, and the dev
 shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are exposed;
-only the local host architecture is tested by default.
+only the local host architecture is tested by default. Pixel tests preload a
+test-only capture module, flush the real raylib draw batch, and inspect the back
+buffer before the buffer swap. That module is never installed with the plugin.
 
 The wrapper is MIT licensed. Raylib is separately licensed under zlib/libpng.

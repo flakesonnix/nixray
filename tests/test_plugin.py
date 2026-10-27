@@ -10,18 +10,22 @@ import unittest
 
 from asset_cases import AssetCases
 from texture_cases import TextureCases
+from pixel_cases import PixelCases
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--nix", required=True)
 parser.add_argument("--plugin", required=True)
+parser.add_argument("--capture-library")
 options, remaining = parser.parse_known_args()
 ROOT = Path(__file__).resolve().parent.parent
 RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, PixelCases, unittest.TestCase):
+    capture_library = options.capture_library
+
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(
             [options.nix, "--option", "plugin-files", options.plugin,

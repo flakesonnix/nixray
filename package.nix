@@ -99,15 +99,21 @@ stdenv.mkDerivation {
     export LD_LIBRARY_PATH=${lib.makeLibraryPath [ mesa ]}
     export __GLX_VENDOR_LIBRARY_NAME=mesa
     export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
+    unset WAYLAND_DISPLAY
+    export XDG_SESSION_TYPE=x11
     xvfb-run -a -s '-screen 0 800x600x24' \
       python3 ../tests/test_plugin.py \
         --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
-        --plugin "$PWD/nixray.so"
+        --plugin "$PWD/nixray.so" \
+        --capture-library "$PWD/nixray-test-capture.so"
     runHook postCheck
   '';
 
   installCheckPhase = ''
     runHook preInstallCheck
+    test ! -e "$out/lib/nix/plugins/nixray-test-capture.so"
+    unset WAYLAND_DISPLAY
+    export XDG_SESSION_TYPE=x11
     export HOME="$TMPDIR/home"
     mkdir -p "$HOME"
     export NIX_STATE_DIR="$TMPDIR/nix-state"
