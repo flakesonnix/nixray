@@ -1,6 +1,7 @@
 """Asset fixtures and evaluator cases, mixed into the main integration suite."""
 
 import json
+import os
 from pathlib import Path
 import struct
 import tempfile
@@ -102,6 +103,16 @@ class AssetCases:
         self.assertEqual(self.evaluate('''builtins.raylibValidate [
           { op = "text"; font = "unloaded"; text = "A"; x = 0; y = 0; size = 12; color = [0 0 0 255]; }
         ]''', flags=["--pure-eval"], env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 1)
+
+    def test_truetype_font(self):
+        path = os.environ.get("NIXRAY_TEST_FONT")
+        if not path:
+            self.skipTest("set NIXRAY_TEST_FONT to exercise TrueType loading")
+        self.assertEqual(self.evaluate(f'''builtins.raylib ({self.asset_config} // {{
+          assets.fonts.ui = {json.dumps(path)};
+        }}) (_: {{ commands = [ {{ op = "text"; font = "ui"; text = "TrueType";
+                   x = 0; y = 0; size = 12; color = [255 255 255 255]; }} ]; }})'''),
+          {"frames": 2, "state": None})
 
     def test_unknown_font(self):
         self.evaluate(f'''builtins.raylib {self.asset_config} (_: {{

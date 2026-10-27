@@ -32,10 +32,11 @@
             inputsFrom = [ self.packages.${system}.nixray ];
             packages = [
               self.packages.${system}.nixray.nixComponents.nix-cli
-              pkgs.python3 pkgs.xvfb-run pkgs.mesa
+              pkgs.python3 pkgs.xvfb-run pkgs.mesa pkgs.dejavu_fonts
             ];
             # Make the README's Xvfb test command work out of the box.
             shellHook = ''
+              export NIXRAY_TEST_FONT=${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf
               export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/tmp/nixray-runtime-$(id -u)}"
               mkdir -m 700 -p "$XDG_RUNTIME_DIR"
               export LIBGL_ALWAYS_SOFTWARE=1

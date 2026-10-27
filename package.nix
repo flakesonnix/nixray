@@ -14,6 +14,7 @@
 , python3
 , xvfb-run
 , mesa
+, dejavu_fonts
 }:
 
 let
@@ -77,13 +78,14 @@ stdenv.mkDerivation {
   nativeBuildInputs = [ cmake pkg-config makeWrapper ];
   # libblake3, glfw and openssl satisfy pkg-config's recursive dependency checks.
   buildInputs = [ nixComponents.nix-expr boost libblake3 raylib glfw openssl ];
-  nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa ];
+  nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa dejavu_fonts ];
   nativeInstallCheckInputs = [ xvfb-run mesa ];
   doCheck = true;
   doInstallCheck = true;
 
   checkPhase = ''
     runHook preCheck
+    export NIXRAY_TEST_FONT=${dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf
     export HOME="$TMPDIR/home"
     mkdir -p "$HOME"
     export NIX_STATE_DIR="$TMPDIR/nix-state"
