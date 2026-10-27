@@ -188,6 +188,27 @@ Run the asset example with your own files:
 nix run . -- examples/assets.nix --arg image ./logo.png --arg font ./ui.ttf
 ```
 
+### Sprite sheets
+
+Select an atlas region and transform it with the same `texture` command:
+
+```nix
+ray.texture {
+  texture = "sheet"; x = 280; y = 120;
+  source = { x = 32; y = 0; width = 32; height = 32; };
+  scale = 4.0; rotation = 30.0;
+}
+```
+
+Declare `assets.textures.sheet` as usual. `examples/sprites.nix` cycles through
+the first row of a sprite sheet while rotating it, at 12 frames per second.
+For an atlas containing four horizontal 32x32 frames:
+
+```sh
+nix run . -- examples/sprites.nix --arg image ./atlas.png \
+  --arg frameWidth 32 --arg frameHeight 32 --arg columns 4
+```
+
 ## Evaluation semantics and safety
 
 Nix is lazy and memoizes expressions. Independent side-effecting builtins for

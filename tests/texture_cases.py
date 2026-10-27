@@ -1,5 +1,7 @@
 """Texture transforms, using the shared asset fixtures from the main suite."""
 
+from pathlib import Path
+
 
 class TextureCases:
     def _draw_texture(self, attributes, **kwargs):
@@ -89,3 +91,10 @@ class TextureCases:
           { op = "texture"; texture = "unloaded"; x = 0; y = 0; scale = 3.0e38;
             source = { x = 0; y = 0; width = 2; height = 2; }; }
         ]''', error="scaled texture dimensions")
+
+    def test_sprite_example_wraps(self):
+        example = Path(__file__).resolve().parent.parent / "examples/sprites.nix"
+        self.assertEqual(self.evaluate(f'''import {example} {{
+          image = {self.texture_path}; frameWidth = 1; frameHeight = 1; columns = 2;
+          hidden = true; maxFrames = 3;
+        }}'''), {"frames": 3, "state": 0})
