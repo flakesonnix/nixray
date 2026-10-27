@@ -250,5 +250,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
+Assertions cover primitive fills, command order, custom fonts, texture orientation,
+scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
+except for a one-step quantization tolerance in the alpha-blending check.
 
 The wrapper is MIT licensed. Raylib is separately licensed under zlib/libpng.

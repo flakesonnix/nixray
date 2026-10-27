@@ -47,3 +47,87 @@ class PixelCases:
         self.assert_pixel(pixels, 4, 5, (0, 255, 0))
         self.assert_pixel(pixels, 1, 3, (0, 0, 0))
         self.assert_pixel(pixels, 3, 8, (0, 0, 0))
+
+    def _texture_pixels(self, attributes=""):
+        return self._capture(f'''[
+          {{ op = "clear"; color = [0 0 0 255]; }}
+          {{ op = "texture"; texture = "pattern"; x = 10; y = 10; {attributes} }}
+        ]''', assets=f"{{ textures.pattern = {self.pattern_path}; }}")
+
+    def test_texture_native_pixels(self):
+        pixels = self._texture_pixels()
+        for x, y, color in (
+            (10, 10, (255, 0, 0)), (11, 10, (0, 255, 0)),
+            (10, 11, (0, 0, 255)), (11, 11, (255, 255, 0)),
+            (9, 10, (0, 0, 0)), (12, 10, (0, 0, 0)),
+        ):
+            self.assert_pixel(pixels, x, y, color)
+
+    def test_texture_scaled_pixels(self):
+        pixels = self._texture_pixels("scale = 2;")
+        colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
+        for dy in range(4):
+            for dx in range(4):
+                self.assert_pixel(pixels, 10 + dx, 10 + dy, colors[(dy // 2) * 2 + dx // 2])
+        self.assert_pixel(pixels, 14, 10, (0, 0, 0))
+
+    def test_texture_cropped_pixels(self):
+        pixels = self._texture_pixels("source = { x = 1; y = 0; width = 1; height = 2; }; scale = 3;")
+        for dy in range(6):
+            for dx in range(3):
+                self.assert_pixel(pixels, 10 + dx, 10 + dy, (0, 255, 0) if dy < 3 else (255, 255, 0))
+        self.assert_pixel(pixels, 13, 10, (0, 0, 0))
+        self.assert_pixel(pixels, 10, 16, (0, 0, 0))
+
+    def test_texture_rotated_pixels(self):
+        for rotation, points in (
+            (90, [(8, 10), (8, 12), (6, 10), (6, 12)]),
+            (-90, [(10, 8), (10, 6), (12, 8), (12, 6)]),
+        ):
+            with self.subTest(rotation=rotation):
+                pixels = self._texture_pixels(f"scale = 2; rotation = {rotation};")
+                for (x, y), color in zip(points, [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]):
+                    self.assert_pixel(pixels, x, y, color)
+
+    def test_texture_cropped_rotated_pixels(self):
+        pixels = self._texture_pixels(
+            "source = { x = 1; y = 0; width = 1; height = 2; }; scale = 2; rotation = 90;"
+        )
+        self.assert_pixel(pixels, 8, 10, (0, 255, 0))
+        self.assert_pixel(pixels, 6, 10, (255, 255, 0))
+        self.assert_pixel(pixels, 8, 12, (0, 0, 0))
+
+    def test_texture_tint_pixels(self):
+        pixels = self._texture_pixels("tint = [80 120 200 255];")
+        for x, y, color in (
+            (10, 10, (80, 0, 0)), (11, 10, (0, 120, 0)),
+            (10, 11, (0, 0, 200)), (11, 11, (80, 120, 0)),
+        ):
+            self.assert_pixel(pixels, x, y, color)
+
+    def test_texture_alpha_pixels(self):
+        pixels = self._capture('''[
+          { op = "clear"; color = [0 0 255 255]; }
+          { op = "texture"; texture = "white"; x = 10; y = 10; tint = [255 0 0 128]; }
+        ]''', assets=f"{{ textures.white = {self.texture_path}; }}")
+        # Allow one quantization step across GL implementations, not a broad image tolerance.
+        self.assert_pixel(pixels, 10, 10, (128, 0, 127), tolerance=1)
+        self.assert_pixel(pixels, 9, 10, (0, 0, 255))
+
+    def test_circle_pixels(self):
+        pixels = self._capture('''[
+          { op = "clear"; color = [0 0 0 255]; }
+          { op = "circle"; x = 16; y = 16; radius = 4; color = [255 0 0 255]; }
+        ]''')
+        self.assert_pixel(pixels, 16, 16, (255, 0, 0))
+        self.assert_pixel(pixels, 0, 0, (0, 0, 0))
+
+    def test_custom_font_pixels(self):
+        pixels = self._capture('''[
+          { op = "clear"; color = [0 0 0 255]; }
+          { op = "text"; font = "ui"; text = "A"; x = 4; y = 4; size = 12; color = [255 255 255 255]; }
+        ]''', assets=f"{{ fonts.ui = {self.font_path}; }}")
+        self.assert_pixel(pixels, 4, 4, (255, 255, 255))
+        self.assert_pixel(pixels, 15, 15, (255, 255, 255))
+        self.assert_pixel(pixels, 16, 4, (0, 0, 0))
+        self.assert_pixel(pixels, 4, 16, (0, 0, 0))

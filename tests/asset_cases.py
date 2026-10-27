@@ -31,6 +31,17 @@ class AssetCases:
             + chunk(b"IEND", b"")
         )
         cls.texture_path = json.dumps(str(texture))
+        pattern = cls.asset_directory / "pattern.png"
+        pattern.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(
+                b"\0\xff\0\0\xff\0\xff\0\xff"  # red, green
+                b"\0\0\0\xff\xff\xff\xff\0\xff"  # blue, yellow
+            ))
+            + chunk(b"IEND", b"")
+        )
+        cls.pattern_path = json.dumps(str(pattern))
         font = cls.asset_directory / "tiny.fnt"
         font.write_text(
             'info face="nixray-test" size=2\n'
