@@ -254,4 +254,9 @@ Assertions cover primitive fills, command order, custom fonts, texture orientati
 scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
 except for a one-step quantization tolerance in the alpha-blending check.
 
+`.github/workflows/checks.yml` runs `nix flake check` on Ubuntu 24.04 for pushes,
+pull requests, and manual runs. Actions are pinned to commit hashes, with
+read-only repository permissions. The flake also validates the workflow with
+`actionlint`, so CI configuration is checked by the same local command.
+
 The wrapper is MIT licensed. Raylib is separately licensed under zlib/libpng.

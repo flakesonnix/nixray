@@ -22,9 +22,17 @@
           meta.description = "Open a raylib window from a Nix expression";
         };
       });
-      checks = eachSystem (system: {
-        integration = self.packages.${system}.nixray;
-      });
+      checks = eachSystem (system:
+        let pkgs = import nixpkgs { inherit system; };
+        in {
+          integration = self.packages.${system}.nixray;
+          workflow = pkgs.runCommand "nixray-workflow-check" {
+            nativeBuildInputs = [ pkgs.actionlint ];
+          } ''
+            actionlint ${./.github/workflows/checks.yml}
+            touch "$out"
+          '';
+        });
       devShells = eachSystem (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
