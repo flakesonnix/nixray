@@ -15,6 +15,13 @@
         nixray = packageFor system;
         default = nixray;
       });
+      apps = eachSystem (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.nixray}/bin/nixray";
+          meta.description = "Open a raylib window from a Nix expression";
+        };
+      });
       devShells = eachSystem (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
