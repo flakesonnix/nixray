@@ -35,8 +35,43 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+    def test_registration(self):
+        result = self.evaluate('''{
+          raylib = builtins.typeOf builtins.raylib;
+          legacyRun = builtins.typeOf builtins.raylibRun;
+          validate = builtins.typeOf builtins.raylibValidate;
+          version = builtins.raylibVersion;
+        }''')
+        self.assertEqual(result["raylib"], "lambda")
+        self.assertEqual(result["legacyRun"], "lambda")
+        self.assertEqual(result["validate"], "lambda")
+        self.assertIsInstance(result["version"], str)
+        self.assertTrue(result["version"])
+
     def test_validation_is_pure(self):
         self.assertEqual(self.evaluate("builtins.raylibValidate []", flags=["--pure-eval"]), 0)
+
+    def test_empty_commands_and_default_state(self):
+        self.assertEqual(self.evaluate(
+            f'builtins.raylib {CONFIG} (_: {{ commands = []; }})'
+        ), {"frames": 3, "state": None})
+
+    def test_partial_application_without_display(self):
+        self.assertEqual(self.evaluate("builtins.typeOf (builtins.raylib {})", env={
+            "DISPLAY": "", "WAYLAND_DISPLAY": "",
+        }), "lambda")
+
+    def test_frame_snapshot_and_state(self):
+        self.assertEqual(self.evaluate(f'''builtins.raylib ({CONFIG} // {{ state = 0; }})
+          (frame:
+            assert frame.frame == frame.state;
+            assert frame.width == 64 && frame.height == 64;
+            assert builtins.isFloat frame.time && builtins.isFloat frame.delta;
+            assert builtins.isInt frame.mouseX && builtins.isInt frame.mouseY;
+            assert builtins.isList frame.keysDown && builtins.isList frame.keysPressed;
+            assert builtins.isList frame.mouseDown && builtins.isList frame.mousePressed;
+            {{ commands = []; state = frame.state + 1; }})'''),
+            {"frames": 3, "state": 3})
 
     def test_validation_without_display(self):
         self.assertEqual(self.evaluate("builtins.raylibValidate []", env={
