@@ -2,8 +2,8 @@
 
 A native **Nix evaluator plugin** backed by [raylib](https://github.com/raysan5/raylib).
 Open a window, draw 2D graphics, and handle keyboard/mouse input directly from Nix.
-This is an initial 2D binding, not a binding to raylib's entire API (no textures,
-audio, or 3D yet).
+Supports 2D primitives, textures, and custom fonts. This is not a binding to
+raylib's entire API (no audio or 3D yet).
 
 ## Run
 
@@ -85,6 +85,7 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `hidden` | `false` | Hidden window, useful for headless tests |
 | `resizable` | `false` | Allow window resizing |
 | `state` | `null` | Initial application state |
+| `assets` | `{}` | Named `textures` and `fonts` maps; see below |
 
 The callback receives a fresh attribute set each frame:
 
@@ -116,6 +117,7 @@ nonnegative integers or floats.
 | --- | --- |
 | `clear` | `color` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
+| `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
 | `circle`, `circleLines` | `x`, `y`, `radius`, `color` |
 | `line` | `x1`, `y1`, `x2`, `y2`, `color` |
@@ -127,6 +129,54 @@ For example, `ray.clear ray.colors.white` constructs
 the attribute sets listed above; `ray.fps x y` takes two integers.
 Commands execute in list order. Unknown attributes/operations and invalid
 arguments are errors, including typos in config or callback results.
+
+`texture` additionally accepts an optional `tint` color (default white), and
+draws the image at its native size. `text` accepts an optional `font` asset name;
+omitting it preserves raylib's default-font behavior.
+
+### Textures and fonts
+
+Declare assets in the window config and refer to them by name in commands:
+
+```nix
+let ray = import ./lib;
+in ray.run {
+  assets = {
+    textures.logo = ./logo.png;
+    fonts.ui = ./ui.ttf;
+  };
+} (_: {
+  commands = [
+    (ray.clear ray.colors.white)
+    (ray.texture { texture = "logo"; x = 24; y = 24; })
+    (ray.text {
+      font = "ui"; text = "Hello assets!";
+      x = 24; y = 200; size = 24; color = ray.colors.blue;
+    })
+  ];
+})
+```
+
+Paths may be Nix path values or absolute strings, including strings with Nix
+store context. The launcher enables `--read-write-mode` so newly referenced
+sources can be copied to the store. Use that flag yourself when invoking
+`nix-instantiate --eval` directly with such paths.
+
+Assets load once, before the first callback. Unknown names and failed loads are
+errors. Native resources are released before the window closes, including on
+callback exceptions or partial loading failures. `raylibValidate` checks command
+structure only: it does not load assets or verify that names are declared.
+
+Fonts use raylib's `LoadFont` defaults (including its default TrueType atlas size
+and glyph set); arbitrary Unicode shaping and glyph selection are not exposed.
+Bitmap fonts must retain their atlas images beside the font file. Copy/package
+the whole asset directory when using store paths for bitmap fonts.
+
+Run the asset example with your own files:
+
+```sh
+nix run . -- examples/assets.nix --arg image ./logo.png --arg font ./ui.ttf
+```
 
 ## Evaluation semantics and safety
 
@@ -163,7 +213,8 @@ Use the Nix binary from `nix develop`, not one outside that shell. The dev
 shell selects software Mesa and sets up `XDG_RUNTIME_DIR` so the Xvfb command
 works without a GPU. Package checks compile the real plugin and run evaluator
 tests plus actual OpenGL rendering under Xvfb; an install check also exercises
-the wrapped launcher. Linux x86_64 and aarch64 packages are exposed; only the
-local host architecture is tested by default.
+the wrapped launcher. Tests generate tiny PNG/bitmap-font fixtures, and the dev
+shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are exposed;
+only the local host architecture is tested by default.
 
 The wrapper is MIT licensed. Raylib is separately licensed under zlib/libpng.

@@ -13,6 +13,7 @@ RegisterPrimOp raylibOp({
     .name = "__raylib",
     .args = {"config", "render"},
     .doc = "Open a raylib window and call render with a fresh input snapshot each frame. "
+           "Optional config.assets declares named textures and fonts loaded once per window. "
            "The callback returns { commands; state ? previousState; close ? false; }. "
            "Returns { frames; state; }. Impure evaluation only.",
     .impl = run,
@@ -30,7 +31,8 @@ RegisterPrimOp runOp({
 RegisterPrimOp validateOp({
     .name = "__raylibValidate",
     .args = {"commands"},
-    .doc = "Validate a list of nixray drawing commands without opening a window; return its length.",
+    .doc = "Validate command structure without opening a window or loading assets; return its length. "
+           "Texture and font names are resolved only by builtins.raylib.",
     .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
         out.mkInt(static_cast<int64_t>(commands(state, pos, *args[0]).size()));
     },

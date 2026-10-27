@@ -99,6 +99,12 @@ class AssetCases:
             ];
           }})'''), {"frames": 2, "state": None})
 
+    def test_assets_example(self):
+        example = Path(__file__).resolve().parent.parent / "examples/assets.nix"
+        self.assertEqual(self.evaluate(f'''import {example} {{
+          image = {self.texture_path}; font = {self.font_path}; hidden = true; maxFrames = 2;
+        }}'''), {"frames": 2, "state": None})
+
     def test_font_validation_without_assets(self):
         self.assertEqual(self.evaluate('''builtins.raylibValidate [
           { op = "text"; font = "unloaded"; text = "A"; x = 0; y = 0; size = 12; color = [0 0 0 255]; }
