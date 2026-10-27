@@ -39,6 +39,12 @@ class AssetCases:
             'char id=65 x=0 y=0 width=2 height=2 xoffset=0 yoffset=0 xadvance=2 page=0 chnl=15\n'
         )
         cls.font_path = json.dumps(str(font))
+        bad_texture = cls.asset_directory / "bad.png"
+        bad_texture.write_bytes(b"not a PNG")
+        cls.bad_texture_path = json.dumps(str(bad_texture))
+        bad_font = cls.asset_directory / "bad.ttf"
+        bad_font.write_bytes(b"\0" * 64)
+        cls.bad_font_path = json.dumps(str(bad_font))
         cls.asset_config = ("{ width = 64; height = 64; hidden = true; fps = 0; "
                             "maxFrames = 2; assets.textures.logo = "
                             + cls.texture_path + "; assets.fonts.ui = " + cls.font_path + "; }")
@@ -107,3 +113,58 @@ class AssetCases:
         self.evaluate('''builtins.raylibValidate [
           { op = "text"; font = ""; text = "A"; x = 0; y = 0; size = 12; color = [0 0 0 255]; }
         ]''', error="font name must not be empty")
+
+    def test_asset_path_values(self):
+        self.assertEqual(self.evaluate(f'''builtins.raylib ({self.asset_config} // {{
+          assets = {{
+            textures.logo = builtins.toPath {self.texture_path};
+            fonts.ui = builtins.toPath {self.font_path};
+          }};
+        }}) (_: {{ commands = []; }})'''), {"frames": 2, "state": None})
+
+    def test_asset_store_string_context(self):
+        source = json.dumps(str(self.asset_directory))
+        self.assertEqual(self.evaluate(f'''let
+          source = builtins.path {{ path = builtins.toPath {source}; name = "nixray-assets"; }};
+        in builtins.raylib ({self.asset_config} // {{
+          assets = {{
+            textures.logo = "${{source}}/tiny texture.png";
+            fonts.ui = "${{source}}/tiny.fnt";
+          }};
+        }}) (_: {{ commands = []; }})''', flags=["--read-write-mode"]),
+          {"frames": 2, "state": None})
+
+    def test_invalid_asset_files(self):
+        for group, path, error in [
+            ("textures", self.bad_texture_path, "could not load texture 'bad'"),
+            ("fonts", self.bad_font_path, "could not load font 'bad'"),
+        ]:
+            with self.subTest(group=group):
+                self.evaluate(f'''builtins.raylib ({self.asset_config} // {{
+                  assets.{group}.bad = {path};
+                }}) (_: {{ commands = []; }})''', error=error)
+
+    def test_partial_asset_load_failure(self):
+        for group, valid, invalid in [
+            ("textures", self.texture_path, self.bad_texture_path),
+            ("fonts", self.font_path, self.bad_font_path),
+        ]:
+            with self.subTest(group=group):
+                self.evaluate(f'''builtins.raylib ({self.asset_config} // {{
+                  assets = ({self.asset_config}).assets // {{
+                    {group} = {{ a = {valid}; z = {invalid}; }};
+                  }};
+                }}) (_: {{ commands = []; }})''', error="could not load " + group[:-1] + " 'z'")
+
+    def test_asset_callback_exception_cleanup(self):
+        self.assertEqual(self.evaluate(f'''let
+          failed = builtins.tryEval (builtins.raylib {self.asset_config}
+            (_: throw "asset callback failed"));
+        in assert !failed.success;
+          builtins.raylib {self.asset_config} (_: {{ commands = []; }})'''),
+          {"frames": 2, "state": None})
+
+    def test_assets_survive_repeated_windows(self):
+        self.assertEqual(self.evaluate(f'''builtins.foldl' (total: _: total +
+          (builtins.raylib {self.asset_config} (_: {{ commands = []; }})).frames
+        ) 0 [ 1 2 3 ]'''), 6)
