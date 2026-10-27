@@ -127,3 +127,43 @@ For example, `ray.clear ray.colors.white` constructs
 the attribute sets listed above; `ray.fps x y` takes two integers.
 Commands execute in list order. Unknown attributes/operations and invalid
 arguments are errors, including typos in config or callback results.
+
+## Evaluation semantics and safety
+
+Nix is lazy and memoizes expressions. Independent side-effecting builtins for
+`BeginDrawing` and `EndDrawing` would therefore be easy to skip, reorder, or run
+only once. Instead, the plugin owns an iterative C++ loop, calls a Nix function
+with a fresh snapshot, fully validates each batch, then draws it in order.
+It closes the window on normal exit and evaluator exceptions, and checks for
+Nix interrupts every frame. Nested windows are rejected.
+
+State is deeply evaluated each frame to avoid accumulating a chain of unevaluated
+updates. Avoid explicitly retaining old snapshots or large histories in state.
+There is no claim of bounded memory for arbitrary callbacks. A result bound with
+`let` is still memoized by Nix: forcing it twice does not run the window twice.
+
+Window evaluation is intentionally impure and rejects `pure-eval` and
+`restrict-eval`. Do not use it in derivations, production NixOS configuration,
+or evaluation of untrusted expressions. A native plugin runs inside the evaluator
+with the user's privileges; it is **not a sandbox**. A working display and OpenGL
+context are required, even with `hidden = true` (use Xvfb for headless rendering).
+
+## Build and test
+
+```sh
+nix flake check -L
+nix develop
+cmake -S . -B build
+cmake --build build
+xvfb-run -a python3 tests/test_plugin.py \
+  --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so"
+```
+
+Use the Nix binary from `nix develop`, not one outside that shell. The dev
+shell selects software Mesa and sets up `XDG_RUNTIME_DIR` so the Xvfb command
+works without a GPU. Package checks compile the real plugin and run evaluator
+tests plus actual OpenGL rendering under Xvfb; an install check also exercises
+the wrapped launcher. Linux x86_64 and aarch64 packages are exposed; only the
+local host architecture is tested by default.
+
+The wrapper is MIT licensed. Raylib is separately licensed under zlib/libpng.
