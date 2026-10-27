@@ -84,6 +84,11 @@ class PluginTests(unittest.TestCase):
             f'builtins.raylib {CONFIG} (_: {{ commands = []; }})'
         ), {"frames": 3, "state": None})
 
+    def test_legacy_run_alias(self):
+        self.assertEqual(self.evaluate(
+            f'builtins.raylibRun {CONFIG} (_: {{ commands = []; }})'
+        ), {"frames": 3, "state": None})
+
     def test_partial_application_without_display(self):
         self.assertEqual(self.evaluate("builtins.typeOf (builtins.raylib {})", env={
             "DISPLAY": "", "WAYLAND_DISPLAY": "",
@@ -101,10 +106,58 @@ class PluginTests(unittest.TestCase):
             {{ commands = []; state = frame.state + 1; }})'''),
             {"frames": 3, "state": 3})
 
+    def test_early_close(self):
+        self.assertEqual(self.evaluate(f'''builtins.raylib ({CONFIG} // {{ maxFrames = 0; }})
+          (frame: {{ commands = []; close = frame.frame == 1; state = "done"; }})'''),
+            {"frames": 2, "state": "done"})
+
+    def test_omitted_state_is_preserved(self):
+        self.assertEqual(self.evaluate(f'''builtins.raylib ({CONFIG} // {{ state = 42; }})
+          (_: {{ commands = []; }})'''), {"frames": 3, "state": 42})
+
+    def test_state_can_retain_callback_input(self):
+        self.assertEqual(self.evaluate(f'''let
+          result = builtins.raylib {CONFIG}
+            (frame: {{ commands = []; state = _: frame.frame; }});
+        in result.state null'''), 2)
+
+    def test_repeated_windows_and_exception_cleanup(self):
+        self.assertEqual(self.evaluate(f'''let
+          failed = builtins.tryEval (builtins.raylib {CONFIG}
+            (_: builtins.throw "callback failed"));
+          first = builtins.raylib {CONFIG} (_: {{ commands = []; }});
+          second = builtins.raylib ({CONFIG} // {{ hidden = false; resizable = true; }})
+            (_: {{ commands = []; }});
+        in assert !failed.success;
+          builtins.seq first second'''), {"frames": 3, "state": None})
+
+    def test_command_exception_cleanup(self):
+        self.assertEqual(self.evaluate(f'''let
+          failed = builtins.tryEval (builtins.raylib {CONFIG}
+            (_: {{ commands = [ (throw "bad command") ]; }}));
+        in assert !failed.success;
+          builtins.raylib {CONFIG} (_: {{ commands = []; }})'''),
+            {"frames": 3, "state": None})
+
+    def test_nested_windows_rejected(self):
+        self.evaluate(f'''builtins.raylib {CONFIG}
+          (_: builtins.raylib {CONFIG} (_: {{ commands = []; }}))''',
+          error="nested runs are not supported")
+
     def test_validation_without_display(self):
         self.assertEqual(self.evaluate("builtins.raylibValidate []", env={
             "DISPLAY": "", "WAYLAND_DISPLAY": "",
         }), 0)
+
+    def test_window_without_display_rejected(self):
+        self.evaluate(f"builtins.raylib {CONFIG} (_: {{ commands = []; }})",
+                      env={"DISPLAY": "", "WAYLAND_DISPLAY": ""},
+                      error="requires a graphical session")
+
+    def test_unavailable_display_rejected(self):
+        self.evaluate(f"builtins.raylib {CONFIG} (_: {{ commands = []; }})",
+                      env={"DISPLAY": ":65530", "WAYLAND_DISPLAY": ""},
+                      error="could not initialize a raylib window")
 
     def test_bad_commands(self):
         cases = [
@@ -125,6 +178,45 @@ class PluginTests(unittest.TestCase):
             with self.subTest(commands=commands):
                 self.evaluate(f"builtins.raylibValidate {commands}", error=error)
 
+    def test_bad_configuration(self):
+        for config, error in [
+            ('{ width = 0; }', "'width' must be"),
+            ('{ height = -1; }', "'height' must be"),
+            ('{ fps = -1; }', "'fps' must be"),
+            ('{ maxFrames = -1; }', "'maxFrames' must be"),
+            ('{ hidden = 1; }', "expected a Boolean"),
+            ('{ widht = 64; }', "unknown attribute 'widht'"),
+        ]:
+            with self.subTest(config=config):
+                self.evaluate(f"builtins.raylib {config} (_: {{ commands = []; }})", error=error)
+        self.evaluate(f"builtins.raylib {CONFIG} 42", error="expected a function")
+
+    def test_bad_callback_result(self):
+        for output, error in [
+            ('[]', "expected a set"),
+            ('{}', "missing attribute 'commands'"),
+            ('{ commands = []; typo = true; }', "unknown attribute 'typo'"),
+            ('{ commands = []; close = 1; }', "expected a Boolean"),
+        ]:
+            with self.subTest(output=output):
+                self.evaluate(f"builtins.raylib {CONFIG} (_: {output})", error=error)
+
+    def test_pure_and_restricted_evaluation_rejected(self):
+        for flag in ("--pure-eval", "--restrict-eval"):
+            with self.subTest(flag=flag):
+                self.evaluate(f"builtins.raylib {CONFIG} (_: {{ commands = []; }})",
+                              flags=[flag], error="requires impure, unrestricted evaluation")
+
+    def test_state_is_forced_at_frame_boundary(self):
+        self.evaluate(f'''builtins.raylib {CONFIG}
+          (_: {{ commands = []; state = {{ unused = throw "state failed"; }}; }})''',
+          error="state failed")
+
+    def test_many_frames_without_nix_recursion(self):
+        self.assertEqual(self.evaluate(f'''builtins.raylib
+          ({CONFIG} // {{ maxFrames = 1500; state = 0; }})
+          (frame: {{ commands = []; state = frame.state + 1; }})'''),
+          {"frames": 1500, "state": 1500})
 
 
 if __name__ == "__main__":
