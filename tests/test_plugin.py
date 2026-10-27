@@ -48,8 +48,36 @@ class PluginTests(unittest.TestCase):
         self.assertIsInstance(result["version"], str)
         self.assertTrue(result["version"])
 
+    def test_example(self):
+        self.assertEqual(self.evaluate(
+            f"import {ROOT / 'examples/hello.nix'} {{ hidden = true; maxFrames = 2; }}"
+        ), {"frames": 2, "state": {"x": 400, "y": 225}})
+
     def test_validation_is_pure(self):
         self.assertEqual(self.evaluate("builtins.raylibValidate []", flags=["--pure-eval"]), 0)
+
+    def test_all_commands(self):
+        expression = f'''let
+          ray = {RAY};
+          color = ray.colors.red;
+          commands = [
+            (ray.clear ray.colors.white)
+            (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
+            (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
+            (ray.rectangleLines {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
+            (ray.circle {{ x = 20; y = 20; radius = 3.5; inherit color; }})
+            (ray.circleLines {{ x = 20; y = 20; radius = 3; inherit color; }})
+            (ray.line {{ x1 = -1; y1 = 2; x2 = 20; y2 = 20; inherit color; }})
+            (ray.pixel {{ x = 3; y = 4; inherit color; }})
+            (ray.fps 0 0)
+          ];
+        in {{
+          validated = ray.validate commands;
+          rendered = ray.run {CONFIG} (frame: {{ inherit commands; state = frame.frame; }});
+        }}'''
+        self.assertEqual(self.evaluate(expression), {
+            "validated": 9, "rendered": {"frames": 3, "state": 2},
+        })
 
     def test_empty_commands_and_default_state(self):
         self.assertEqual(self.evaluate(
