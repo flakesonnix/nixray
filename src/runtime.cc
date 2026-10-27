@@ -1,4 +1,5 @@
 #include "runtime.hh"
+#include "assets.hh"
 #include "commands.hh"
 #include "reader.hh"
 
@@ -59,7 +60,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     Reader r(state, pos);
     if (state.settings.pureEval || state.settings.restrictEval)
         r.fail("builtins.raylib requires impure, unrestricted evaluation");
-    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "state"});
+    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "state", "assets"});
     int width = r.defaultInt(*args[0], "width", 800, 1);
     int height = r.defaultInt(*args[0], "height", 450, 1);
     int fps = r.defaultInt(*args[0], "fps", 60);
@@ -77,11 +78,14 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     if (!hasEnvironment("DISPLAY") && !hasEnvironment("WAYLAND_DISPLAY"))
         r.fail("builtins.raylib requires a graphical session (DISPLAY or WAYLAND_DISPLAY)");
 
+    auto specs = assetSpecs(state, pos, r.optional(*args[0], "assets"));
     auto * initial = r.optional(*args[0], "state");
     auto current = allocRootValue(initial ? initial : &Value::vNull);
     state.forceValueDeep(**current);
     Window window(width, height, title, hidden, resizable);
     if (!IsWindowReady()) r.fail("could not initialize a raylib window; check DISPLAY and OpenGL support");
+    // This object (including partially loaded assets) is destroyed before Window.
+    Assets assets(specs, r);
     SetTargetFPS(fps);
 
     int64_t frames = 0;

@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import unittest
 
+from asset_cases import AssetCases
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--nix", required=True)
@@ -18,7 +20,7 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(unittest.TestCase):
+class PluginTests(AssetCases, unittest.TestCase):
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(
             [options.nix, "--option", "plugin-files", options.plugin,
@@ -87,6 +89,12 @@ class PluginTests(unittest.TestCase):
     def test_legacy_run_alias(self):
         self.assertEqual(self.evaluate(
             f'builtins.raylibRun {CONFIG} (_: {{ commands = []; }})'
+        ), {"frames": 3, "state": None})
+
+    def test_empty_assets(self):
+        self.assertEqual(self.evaluate(
+            f'builtins.raylib ({CONFIG} // {{ assets = {{ textures = {{}}; fonts = {{}}; }}; }})'
+            ' (_: { commands = []; })'
         ), {"frames": 3, "state": None})
 
     def test_partial_application_without_display(self):
@@ -186,6 +194,12 @@ class PluginTests(unittest.TestCase):
             ('{ maxFrames = -1; }', "'maxFrames' must be"),
             ('{ hidden = 1; }', "expected a Boolean"),
             ('{ widht = 64; }', "unknown attribute 'widht'"),
+            ('{ assets = []; }', "expected a set"),
+            ('{ assets.typo = {}; }', "unknown attribute 'typo'"),
+            ('{ assets.textures = []; }', "expected a set"),
+            ('{ assets.textures."" = /tmp; }', "asset names must be nonempty"),
+            ('{ assets.fonts.ui = 42; }', "asset paths must be"),
+            ('{ assets.textures.logo = "relative.png"; }', "asset paths must be"),
         ]:
             with self.subTest(config=config):
                 self.evaluate(f"builtins.raylib {config} (_: {{ commands = []; }})", error=error)
