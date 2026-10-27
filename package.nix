@@ -77,7 +77,9 @@ stdenv.mkDerivation {
   # libblake3, glfw and openssl satisfy pkg-config's recursive dependency checks.
   buildInputs = [ nixComponents.nix-expr boost libblake3 raylib glfw openssl ];
   nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa ];
+  nativeInstallCheckInputs = [ xvfb-run mesa ];
   doCheck = true;
+  doInstallCheck = true;
 
   checkPhase = ''
     runHook preCheck
@@ -99,6 +101,58 @@ stdenv.mkDerivation {
         --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
         --plugin "$PWD/nixray.so"
     runHook postCheck
+  '';
+
+  installCheckPhase = ''
+    runHook preInstallCheck
+    export HOME="$TMPDIR/home"
+    mkdir -p "$HOME"
+    export NIX_STATE_DIR="$TMPDIR/nix-state"
+    export NIX_STORE_DIR="$TMPDIR/store"
+    export NIX_CONFIG="experimental-features = nix-command flakes"
+    export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+    mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export GALLIUM_DRIVER=llvmpipe
+    export LIBGL_DRIVERS_PATH=${mesa}/lib/dri
+    export LD_LIBRARY_PATH=${lib.makeLibraryPath [ mesa ]}
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
+    cat > "$TMPDIR/auto-call.nix" <<'EOF'
+{ value ? 42 }: { inherit value; }
+EOF
+    auto_output=$("$out/bin/nixray" "$TMPDIR/auto-call.nix")
+    printf '%s\n' "$auto_output"
+    printf '%s\n' "$auto_output" | grep -q '"value":42'
+    direct_output=$("$out/bin/nixray" "$TMPDIR/auto-call.nix" --arg value 7)
+    printf '%s\n' "$direct_output"
+    printf '%s\n' "$direct_output" | grep -q '"value":7'
+    if ! smoke_output=$(xvfb-run -a -s '-screen 0 800x600x24' \
+      "$out/bin/nixray" ../examples/hello.nix --arg hidden true --arg maxFrames 1 2>&1)
+    then
+      printf '%s\n' "$smoke_output" >&2
+      exit 1
+    fi
+    printf '%s\n' "$smoke_output"
+    printf '%s\n' "$smoke_output" | grep -q '"frames":1'
+    cat > "$TMPDIR/builtin.nix" <<'EOF'
+builtins.raylib {
+  width = 64; height = 64; hidden = true; fps = 0; maxFrames = 2;
+  state = 0;
+} (frame: {
+  commands = [ { op = "clear"; color = [ 0 0 0 255 ]; } ];
+  state = frame.state + 1;
+})
+EOF
+    if ! builtin_output=$(xvfb-run -a -s '-screen 0 800x600x24' \
+      "$out/bin/nixray" "$TMPDIR/builtin.nix" 2>&1)
+    then
+      printf '%s\n' "$builtin_output" >&2
+      exit 1
+    fi
+    printf '%s\n' "$builtin_output"
+    printf '%s\n' "$builtin_output" | grep -q '"frames":2,"state":2'
+    runHook postInstallCheck
   '';
 
   postInstall = ''
