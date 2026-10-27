@@ -137,6 +137,13 @@ raylib coordinates. Defaults draw the image at native size without rotation.
 `text` accepts an optional `font` asset name; omitting it preserves raylib's
 default-font behavior.
 
+For sprites/atlases, `texture` accepts `source = { x; y; width; height; }` in
+image pixels. Offsets must be nonnegative integers and dimensions positive
+integers. The rectangle must fit the loaded texture; cropping happens before
+scaling and rotation. Omitting `source` uses the whole image. Pure validation
+checks the rectangle's structure, but its texture bounds are checked only when
+running with loaded assets.
+
 ### Textures and fonts
 
 Declare assets in the window config and refer to them by name in commands:
