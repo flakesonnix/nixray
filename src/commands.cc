@@ -1,11 +1,12 @@
 #include "commands.hh"
+#include "assets.hh"
 #include "reader.hh"
 
 namespace nixray {
 
 // Parse every command before BeginDrawing: evaluation errors cannot leave an
 // unfinished drawing batch, and command execution never re-enters the evaluator.
-std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value)
+std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
     Reader r(state, pos);
     state.forceList(value, pos, context);
@@ -18,6 +19,20 @@ std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value)
             r.fields(*entry, {"op", "color"});
             auto color = r.color(r.required(*entry, "color"));
             result.emplace_back([=] { ClearBackground(color); });
+        } else if (op == "texture") {
+            r.fields(*entry, {"op", "texture", "x", "y", "tint"});
+            auto name = r.string(r.required(*entry, "texture"));
+            if (name.empty()) r.fail("texture name must not be empty");
+            int x = r.integerAttr(*entry, "x"), y = r.integerAttr(*entry, "y");
+            auto * tintValue = r.optional(*entry, "tint");
+            auto tint = tintValue ? r.color(*tintValue) : WHITE;
+            Texture2D texture{};
+            if (assets) {
+                auto * found = assets->texture(name);
+                if (!found) r.fail("unknown texture '" + name + "'");
+                texture = *found;
+            }
+            result.emplace_back([=] { DrawTexture(texture, x, y, tint); });
         } else if (op == "text") {
             r.fields(*entry, {"op", "text", "x", "y", "size", "color"});
             auto text = r.string(r.required(*entry, "text"));

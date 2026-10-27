@@ -31,6 +31,7 @@ rec {
 
   clear = color: { op = "clear"; inherit color; };
   text = args: args // { op = "text"; };
+  texture = args: args // { op = "texture"; };
   rectangle = args: args // { op = "rectangle"; };
   rectangleLines = args: args // { op = "rectangleLines"; };
   circle = args: args // { op = "circle"; };

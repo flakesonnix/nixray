@@ -111,7 +111,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         auto output = allocRootValue(state.allocValue());
         state.callFunction(*args[1], **input, **output, pos);
         r.fields(**output, {"commands", "state", "close"});
-        auto batch = commands(state, pos, r.required(**output, "commands"));
+        auto batch = commands(state, pos, r.required(**output, "commands"), &assets);
         bool close = r.defaultBool(**output, "close", false);
         if (auto * next = r.optional(**output, "state")) {
             // Force state at the frame boundary, avoiding a chain of numeric
