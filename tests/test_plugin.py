@@ -9,6 +9,7 @@ import subprocess
 import unittest
 
 from asset_cases import AssetCases
+from texture_cases import TextureCases
 
 
 parser = argparse.ArgumentParser()
@@ -20,7 +21,7 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, unittest.TestCase):
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(
             [options.nix, "--option", "plugin-files", options.plugin,

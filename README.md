@@ -130,9 +130,12 @@ the attribute sets listed above; `ray.fps x y` takes two integers.
 Commands execute in list order. Unknown attributes/operations and invalid
 arguments are errors, including typos in config or callback results.
 
-`texture` additionally accepts an optional `tint` color (default white), and
-draws the image at its native size. `text` accepts an optional `font` asset name;
-omitting it preserves raylib's default-font behavior.
+`texture` additionally accepts `tint` (default white), `scale` (default `1`),
+and `rotation` (default `0`). Rotation is clockwise in degrees around `(x, y)`;
+scale is a finite positive integer or float. Scaled dimensions must fit finite
+raylib coordinates. Defaults draw the image at native size without rotation.
+`text` accepts an optional `font` asset name; omitting it preserves raylib's
+default-font behavior.
 
 ### Textures and fonts
 
