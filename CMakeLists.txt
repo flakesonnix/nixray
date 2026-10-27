@@ -6,7 +6,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(NIX REQUIRED IMPORTED_TARGET nix-expr>=2.34 nix-expr<2.35)
 pkg_check_modules(RAYLIB REQUIRED IMPORTED_TARGET raylib>=5.5)
 
-add_library(nixray MODULE src/plugin.cc)
+add_library(nixray MODULE src/plugin.cc src/commands.cc)
 target_compile_features(nixray PRIVATE cxx_std_23)
 target_compile_options(nixray PRIVATE -Wall -Wextra)
 target_link_libraries(nixray PRIVATE PkgConfig::NIX PkgConfig::RAYLIB)
