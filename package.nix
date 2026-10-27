@@ -48,8 +48,9 @@ let
 
     # nix-instantiate only applies top-level function defaults when an
     # --arg/--argstr is present. Apply an explicit empty argument set otherwise.
+    # Read-write mode lets context-bearing asset paths be materialised in the store.
     if [ "$has_args" = true ] || [ "$file" = "-" ] || [ "''${file#-}" != "$file" ]; then
-      exec "$nix" --option plugin-files "$plugin" --eval --strict --json "$file" "$@"
+      exec "$nix" --read-write-mode --option plugin-files "$plugin" --eval --strict --json "$file" "$@"
     fi
 
     case "$file" in
@@ -57,7 +58,7 @@ let
       *) file="$PWD/$file" ;;
     esac
 
-    exec "$nix" --option plugin-files "$plugin" --eval --strict --json \
+    exec "$nix" --read-write-mode --option plugin-files "$plugin" --eval --strict --json \
       --argstr __nixray_file "$file" \
       --expr '{ __nixray_file }: let f = import (builtins.toPath __nixray_file); in if builtins.isFunction f then f {} else f' \
       "$@"
@@ -127,6 +128,17 @@ EOF
     direct_output=$("$out/bin/nixray" "$TMPDIR/auto-call.nix" --arg value 7)
     printf '%s\n' "$direct_output"
     printf '%s\n' "$direct_output" | grep -q '"value":7'
+    printf 'nixray asset context\n' > "$TMPDIR/context-source.txt"
+    cat > "$TMPDIR/store-context.nix" <<'EOF'
+{ marker ? "nixray-auto-context" }:
+builtins.readFile "''${builtins.path { path = ./context-source.txt; name = marker; }}"
+EOF
+    context_output=$("$out/bin/nixray" "$TMPDIR/store-context.nix")
+    printf '%s\n' "$context_output"
+    printf '%s\n' "$context_output" | grep -q 'nixray asset context'
+    direct_context=$("$out/bin/nixray" "$TMPDIR/store-context.nix" --argstr marker nixray-direct-context)
+    printf '%s\n' "$direct_context"
+    printf '%s\n' "$direct_context" | grep -q 'nixray asset context'
     if ! smoke_output=$(xvfb-run -a -s '-screen 0 800x600x24' \
       "$out/bin/nixray" ../examples/hello.nix --arg hidden true --arg maxFrames 1 2>&1)
     then
