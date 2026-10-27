@@ -76,6 +76,30 @@ stdenv.mkDerivation {
   nativeBuildInputs = [ cmake pkg-config makeWrapper ];
   # libblake3, glfw and openssl satisfy pkg-config's recursive dependency checks.
   buildInputs = [ nixComponents.nix-expr boost libblake3 raylib glfw openssl ];
+  nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa ];
+  doCheck = true;
+
+  checkPhase = ''
+    runHook preCheck
+    export HOME="$TMPDIR/home"
+    mkdir -p "$HOME"
+    export NIX_STATE_DIR="$TMPDIR/nix-state"
+    export NIX_STORE_DIR="$TMPDIR/store"
+    export NIX_CONFIG="experimental-features = nix-command flakes"
+    export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+    mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export GALLIUM_DRIVER=llvmpipe
+    export LIBGL_DRIVERS_PATH=${mesa}/lib/dri
+    export LD_LIBRARY_PATH=${lib.makeLibraryPath [ mesa ]}
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
+    xvfb-run -a -s '-screen 0 800x600x24' \
+      python3 ../tests/test_plugin.py \
+        --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
+        --plugin "$PWD/nixray.so"
+    runHook postCheck
+  '';
 
   postInstall = ''
     mkdir -p "$out/bin" "$out/share/nixray"
