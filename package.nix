@@ -79,7 +79,7 @@ stdenv.mkDerivation {
   # libblake3, glfw and openssl satisfy pkg-config's recursive dependency checks.
   buildInputs = [ nixComponents.nix-expr boost libblake3 raylib glfw openssl ];
   nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa dejavu_fonts ];
-  nativeInstallCheckInputs = [ xvfb-run mesa ];
+  nativeInstallCheckInputs = [ python3 xvfb-run mesa ];
   doCheck = true;
   doInstallCheck = true;
 
@@ -172,6 +172,8 @@ EOF
     fi
     printf '%s\n' "$builtin_output"
     printf '%s\n' "$builtin_output" | grep -q '"frames":2,"state":2'
+    xvfb-run -a -s '-screen 0 800x600x24' \
+      python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck
   '';
 
