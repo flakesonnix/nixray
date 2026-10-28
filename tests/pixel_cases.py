@@ -12,7 +12,7 @@ MIRROR_CASES = (
 
 
 class PixelCases:
-    def _capture(self, commands, *, assets="{}"):
+    def _capture(self, commands, *, assets="{}", frames=1):
         if not self.capture_library:
             self.skipTest("pass --capture-library to enable framebuffer pixel tests")
         library = Path(self.capture_library).resolve()
@@ -23,12 +23,12 @@ class PixelCases:
         if os.environ.get("LD_PRELOAD"):
             preload += " " + os.environ["LD_PRELOAD"]
         result = self.evaluate(f'''builtins.raylib {{
-          width = 32; height = 32; hidden = true; fps = 0; maxFrames = 1;
+          width = 32; height = 32; hidden = true; fps = 0; maxFrames = {frames};
           assets = {assets};
         }} (frame: {{ commands = {commands}; }})''', env={
             "LD_PRELOAD": preload, "NIXRAY_TEST_CAPTURE": str(destination),
         })
-        self.assertEqual(result, {"frames": 1, "state": None})
+        self.assertEqual(result, {"frames": frames, "state": None})
         self.assertTrue(destination.is_file(), "capture hook did not write the framebuffer")
         magic, dimensions, maximum, data = destination.read_bytes().split(b"\n", 3)
         self.assertEqual((magic, dimensions, maximum), (b"P6", b"32 32", b"255"))

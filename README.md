@@ -66,8 +66,9 @@ Loading the plugin registers:
 
 - `builtins.raylib config render`: own a window and its frame loop.
 - `builtins.raylibRun config render`: compatibility alias for `builtins.raylib`.
-- `builtins.raylibValidate commands`: validate commands without a display; return
-  their count. Also usable during pure evaluation.
+- `builtins.raylibValidate commands`: recursively validate commands without a
+  display; return the top-level list length (each `clip` counts as one command).
+  Also usable during pure evaluation.
 - `builtins.raylibVersion`: linked raylib version string.
 
 `builtins.raylib` is a native plugin-provided builtin, not a modification to
@@ -170,6 +171,7 @@ nonnegative integers or floats, as do ellipse radii.
 | `op` | Required attributes besides `op` |
 | --- | --- |
 | `clear` | `color` |
+| `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
@@ -237,6 +239,38 @@ fully validated in these cases.
 Try `nix run . -- examples/shapes.nix` for all six commands. Matching helpers
 such as `ray.triangle { ... }` and `ray.rectangleRoundedLines { ... }` construct
 the same command attribute sets.
+
+### Clipping
+
+`clip` limits all of its child commands to a rectangular window region:
+
+```nix
+ray.clip {
+  x = 24; y = 64; width = 592; height = 240;
+  commands = [
+    (ray.rectangle { x = 0; y = 0; width = 640; height = 360; color = ray.colors.skyblue; })
+    (ray.text { text = "Clipped content"; x = 32; y = 72; size = 24; color = ray.colors.black; })
+  ];
+}
+```
+
+Coordinates are absolute window coordinates, not offsets from the parent clip.
+`x`/`y` are signed 32-bit integers; `width`/`height` are nonnegative signed 32-bit
+integers. Bounds are safely clamped to the window; the right and bottom edges
+are excluded. Nested clips intersect their parent's region and restore it on
+exit. Leaving the outermost clip restores unclipped drawing, including in
+subsequent frames. Up to 64 nested clips are supported.
+
+The scope applies to shapes, text, textures and `clear`. Clears affect only the
+active region and preserve command order by flushing earlier queued geometry.
+Clipping does not translate drawing coordinates, change input snapshots or alter
+text measurement. Zero-size, off-screen and disjoint regions draw nothing, but
+their children are still fully evaluated and validated before drawing begins;
+undeclared assets remain errors even inside an invisible clip. Pure validation
+recurses through children without opening a window or resolving asset names.
+
+Try `nix run . -- examples/clipping.nix`: the mouse wheel scrolls a list inside
+a panel while its header, border and footer remain outside the clip.
 
 ### Textures and fonts
 
@@ -399,7 +433,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover shape fills/outlines, both triangle windings, degenerate shapes,
+Assertions cover nested clipping, scissor restoration across frames, clipped
+clears, extreme clip bounds, shape fills/outlines, both triangle windings, degenerate shapes,
 command order, Unicode glyph selection, measured
 text placement, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,

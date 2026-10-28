@@ -33,7 +33,7 @@ RegisterPrimOp runOp({
 RegisterPrimOp validateOp({
     .name = "__raylibValidate",
     .args = {"commands"},
-    .doc = "Validate command structure without opening a window or loading assets; return its length. "
+    .doc = "Recursively validate command structure without opening a window or loading assets; return the top-level list length. "
            "Texture and font names are resolved only by builtins.raylib.",
     .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
         out.mkInt(static_cast<int64_t>(commands(state, pos, *args[0]).size()));

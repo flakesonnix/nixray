@@ -14,6 +14,7 @@ from pixel_cases import PixelCases
 from input_cases import InputCases
 from text_cases import TextCases
 from shape_cases import ShapeCases
+from clip_cases import ClipCases
 
 
 parser = argparse.ArgumentParser()
@@ -27,7 +28,7 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, unittest.TestCase):
     capture_library = options.capture_library
     input_library = options.input_library
 
@@ -74,6 +75,8 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, S
           color = ray.colors.red;
           commands = [
             (ray.clear ray.colors.white)
+            (ray.clip {{ x = 0; y = 0; width = 32; height = 32;
+                        commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
             (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
             (ray.rectangleLines {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
@@ -95,7 +98,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, S
           rendered = ray.run {CONFIG} (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 15, "rendered": {"frames": 3, "state": 2},
+            "validated": 16, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

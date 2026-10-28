@@ -32,6 +32,7 @@ rec {
   mouseReleased = frame: button: builtins.elem button frame.mouseReleased;
 
   clear = color: { op = "clear"; inherit color; };
+  clip = args: args // { op = "clip"; };
   text = args: args // { op = "text"; };
   texture = args: args // { op = "texture"; };
   rectangle = args: args // { op = "rectangle"; };

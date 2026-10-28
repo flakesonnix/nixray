@@ -4,12 +4,19 @@
 #include "texture.hh"
 #include "text.hh"
 #include "shapes.hh"
+#include "clip.hh"
+
+#include <rlgl.h>
+#include <utility>
 
 namespace nixray {
 
+namespace {
+
 // Parse every command before BeginDrawing: evaluation errors cannot leave an
 // unfinished drawing batch, and command execution never re-enters the evaluator.
-std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
+std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
+                                     std::optional<ClipBounds> parent, unsigned depth)
 {
     Reader r(state, pos);
     state.forceList(value, pos, context);
@@ -18,10 +25,20 @@ std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, cons
     auto values = value.listView();
     for (auto * entry : values) {
         auto op = r.string(r.required(*entry, "op"));
-        if (op == "clear") {
+        if (op == "clip") {
+            if (depth >= 64) r.fail("clip nesting must not exceed 64 levels");
+            auto bounds = clipBounds(r, *entry, parent);
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, depth + 1);
+            result.emplace_back(clipCommand(bounds, parent, std::move(batch)));
+        } else if (op == "clear") {
             r.fields(*entry, {"op", "color"});
             auto color = r.color(r.required(*entry, "color"));
-            result.emplace_back([=] { ClearBackground(color); });
+            result.emplace_back([=] {
+                // ClearBackground clears immediately; preserve list order even
+                // when earlier geometry is still queued inside a clip scope.
+                rlDrawRenderBatchActive();
+                ClearBackground(color);
+            });
         } else if (op == "texture") {
             result.emplace_back(textureCommand(state, pos, *entry, assets));
         } else if (op == "text") {
@@ -67,6 +84,13 @@ std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, cons
         }
     }
     return result;
+}
+
+} // namespace
+
+std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
+{
+    return compileCommands(state, pos, value, assets, std::nullopt, 0);
 }
 
 } // namespace nixray
