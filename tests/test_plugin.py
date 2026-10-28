@@ -13,6 +13,7 @@ from texture_cases import TextureCases
 from pixel_cases import PixelCases
 from input_cases import InputCases
 from text_cases import TextCases
+from shape_cases import ShapeCases
 
 
 parser = argparse.ArgumentParser()
@@ -26,7 +27,7 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, unittest.TestCase):
     capture_library = options.capture_library
     input_library = options.input_library
 
@@ -78,6 +79,13 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, u
             (ray.rectangleLines {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
             (ray.circle {{ x = 20; y = 20; radius = 3.5; inherit color; }})
             (ray.circleLines {{ x = 20; y = 20; radius = 3; inherit color; }})
+            (ray.triangle {{ x1 = 1; y1 = 1; x2 = 1; y2 = 10; x3 = 10; y3 = 1; inherit color; }})
+            (ray.triangleLines {{ x1 = 1; y1 = 1; x2 = 1; y2 = 10; x3 = 10; y3 = 1; inherit color; }})
+            (ray.ellipse {{ x = 20; y = 20; radiusX = 4.5; radiusY = 2; inherit color; }})
+            (ray.ellipseLines {{ x = 20; y = 20; radiusX = 4; radiusY = 2.5; inherit color; }})
+            (ray.rectangleRounded {{ x = 2; y = 2; width = 10; height = 12; roundness = 0.5; inherit color; }})
+            (ray.rectangleRoundedLines {{ x = 2; y = 2; width = 10; height = 12;
+                                         roundness = 1; segments = 8; inherit color; }})
             (ray.line {{ x1 = -1; y1 = 2; x2 = 20; y2 = 20; inherit color; }})
             (ray.pixel {{ x = 3; y = 4; inherit color; }})
             (ray.fps 0 0)
@@ -87,7 +95,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, u
           rendered = ray.run {CONFIG} (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 9, "rendered": {"frames": 3, "state": 2},
+            "validated": 15, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

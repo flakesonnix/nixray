@@ -3,6 +3,7 @@
 #include "reader.hh"
 #include "texture.hh"
 #include "text.hh"
+#include "shapes.hh"
 
 namespace nixray {
 
@@ -25,6 +26,9 @@ std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, cons
             result.emplace_back(textureCommand(state, pos, *entry, assets));
         } else if (op == "text") {
             result.emplace_back(textCommand(state, pos, *entry, assets));
+        } else if (op == "triangle" || op == "triangleLines" || op == "ellipse" || op == "ellipseLines" ||
+                   op == "rectangleRounded" || op == "rectangleRoundedLines") {
+            result.emplace_back(shapeCommand(state, pos, *entry, op));
         } else if (op == "rectangle" || op == "rectangleLines") {
             r.fields(*entry, {"op", "x", "y", "width", "height", "color"});
             int x = r.integerAttr(*entry, "x"), y = r.integerAttr(*entry, "y");

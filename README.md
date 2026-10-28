@@ -165,7 +165,7 @@ Unicode characters may be retained in state but displayed as fallback glyphs.
 Colors are four integers, `[ red green blue alpha ]`, each in `0..255`.
 Coordinates and dimensions are signed 32-bit integers; sizes must be
 nonnegative (text size must be positive). Circle radii accept finite,
-nonnegative integers or floats.
+nonnegative integers or floats, as do ellipse radii.
 
 | `op` | Required attributes besides `op` |
 | --- | --- |
@@ -173,7 +173,10 @@ nonnegative integers or floats.
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
+| `rectangleRounded`, `rectangleRoundedLines` | `x`, `y`, `width`, `height`, `roundness`, `color` |
 | `circle`, `circleLines` | `x`, `y`, `radius`, `color` |
+| `ellipse`, `ellipseLines` | `x`, `y`, `radiusX`, `radiusY`, `color` |
+| `triangle`, `triangleLines` | `x1`, `y1`, `x2`, `y2`, `x3`, `y3`, `color` |
 | `line` | `x1`, `y1`, `x2`, `y2`, `color` |
 | `pixel` | `x`, `y`, `color` |
 | `fps` | `x`, `y` |
@@ -209,6 +212,31 @@ integers. The rectangle must fit the loaded texture; cropping happens before
 scaling and rotation. Omitting `source` uses the whole image. Pure validation
 checks the rectangle's structure, but its texture bounds are checked only when
 running with loaded assets.
+
+### Additional 2D shapes
+
+`triangle` and `triangleLines` accept either vertex winding order; native
+rendering normalizes the order so filled triangles do not disappear because
+of back-face culling. Ellipses are centered at `(x, y)`, with separate horizontal
+`radiusX` and vertical `radiusY` values. All coordinates are signed 32-bit
+integers; ellipse radii are finite nonnegative integers or floats.
+
+Rounded rectangles use the same integer bounds as rectangles. `roundness` is
+a required finite number in `0..1`: zero gives square corners, and one uses a
+corner radius of half the smaller dimension. Optional `segments` is either `0`
+(the default, automatic) or an integer in `4..4096`, specifying segments per
+corner. Automatic tessellation is bounded to the same range and avoids
+raylib's problematic automatic segment calculation at extreme radii.
+
+The `Lines` variants draw one-pixel contours. Rounded rectangle contours follow
+raylib's outer outline and may extend one pixel beyond the nominal rectangle.
+Zero-area triangles, zero-radius ellipses and zero-width/height rounded
+rectangles draw nothing, including their outline variants. Commands are still
+fully validated in these cases.
+
+Try `nix run . -- examples/shapes.nix` for all six commands. Matching helpers
+such as `ray.triangle { ... }` and `ray.rectangleRoundedLines { ... }` construct
+the same command attribute sets.
 
 ### Textures and fonts
 
@@ -371,7 +399,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover primitive fills, command order, Unicode glyph selection, measured
+Assertions cover shape fills/outlines, both triangle windings, degenerate shapes,
+command order, Unicode glyph selection, measured
 text placement, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
 except for a one-step quantization tolerance in the alpha-blending check.
