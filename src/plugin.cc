@@ -14,6 +14,7 @@ RegisterPrimOp raylibOp({
     .args = {"config", "render"},
     .doc = "Open a raylib window and call render with a fresh input snapshot each frame. "
            "Optional config.assets declares named textures and fonts loaded once per window. "
+           "Snapshots include press/release states, two-axis wheel deltas and UTF-8 text input. "
            "The callback returns { commands; state ? previousState; close ? false; }. "
            "Returns { frames; state; }. Impure evaluation only.",
     .impl = run,

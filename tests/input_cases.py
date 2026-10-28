@@ -80,3 +80,11 @@ class InputCases:
           width = 32; height = 32; hidden = true; fps = 0; maxFrames = 1;
         } (frame: assert frame.textInput == ""; { commands = []; })'''),
           {"frames": 1, "state": None})
+
+    def test_input_example(self):
+        example = Path(__file__).resolve().parent.parent / "examples/input.nix"
+        for frames, text in ((4, "Aä🙂λ€\n" + "\ufffd" * 4), (6, "")):
+            with self.subTest(frames=frames):
+                self.assertEqual(self._input_evaluate(f'''import {example} {{
+                  hidden = true; maxFrames = {frames};
+                }}'''), {"frames": frames, "state": {"text": text, "radius": 37.0, "warm": True}})

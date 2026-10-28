@@ -150,6 +150,12 @@ its Unicode codepoints into a UTF-8 string, even if the callback ignores the
 field. It contains this frame's queued text only; append it to your own state
 when desired. Invalid scalar values become U+FFFD. Editing keys still use the
 keyboard lists; IME pre-edit/composition state and text shaping are not exposed.
+Text input is independent of the loaded font's glyph coverage.
+
+Try `nix run . -- examples/input.nix`: type to append text, press Enter to clear
+it, scroll to resize the circle, and release A or the left mouse button to
+change its color. The example deliberately uses the default font, so some
+Unicode characters may be retained in state but displayed as fallback glyphs.
 
 ### Drawing commands
 
@@ -299,6 +305,10 @@ buffer before the buffer swap. That module is never installed with the plugin.
 Assertions cover primitive fills, command order, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
 except for a one-step quantization tolerance in the alpha-blending check.
+Input tests preload a separate polling-state fixture for release edges, wheel
+axes, UTF-8 queues and snapshot lifetime checks. They do not require physical
+devices or claim to cover OS event delivery or IME integration. Neither test
+module is installed with the plugin.
 
 `.github/workflows/checks.yml` runs `nix flake check` on Ubuntu 24.04 for pushes,
 pull requests, and manual runs. Actions are pinned to commit hashes, with

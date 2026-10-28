@@ -40,14 +40,16 @@ extern "C" void EndDrawing()
 
 extern "C" bool IsKeyDown(int key)
 {
-    return (frame == 0 && key == KEY_A) || (frame == 2 && key == KEY_KB_MENU);
+    return (frame == 0 && key == KEY_A) || (frame == 2 && key == KEY_KB_MENU) ||
+           (frame == 5 && key == KEY_ENTER);
 }
 
 extern "C" bool IsKeyPressed(int key) { return IsKeyDown(key); }
 
 extern "C" bool IsKeyReleased(int key)
 {
-    return (frame == 1 && key == KEY_A) || (frame == 3 && key == KEY_KB_MENU);
+    return (frame == 1 && key == KEY_A) || (frame == 3 && key == KEY_KB_MENU) ||
+           (frame == 6 && key == KEY_ENTER);
 }
 
 extern "C" bool IsMouseButtonDown(int button)
