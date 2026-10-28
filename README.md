@@ -138,6 +138,9 @@ Only `commands` is required. Omitted `state` preserves the previous state.
 `close = true` exits **after** drawing that frame. The native loop returns
 `{ frames = totalRenderedFrames; state = finalState; }`.
 
+The frame also contains `measureText`, a native function for text layout with
+the window's fonts; see [Text measurement](#text-measurement).
+
 `ray.keyReleased frame key` and `ray.mouseReleased frame button` test the release
 lists; down/pressed fields and their existing behavior are unchanged.
 
@@ -240,16 +243,67 @@ errors. Native resources are released before the window closes, including on
 callback exceptions or partial loading failures. `raylibValidate` checks command
 structure only: it does not load assets or verify that names are declared.
 
-Fonts use raylib's `LoadFont` defaults (including its default TrueType atlas size
-and glyph set); arbitrary Unicode shaping and glyph selection are not exposed.
-Bitmap fonts must retain their atlas images beside the font file. Copy/package
-the whole asset directory when using store paths for bitmap fonts.
+Font paths retain raylib's `LoadFont` defaults (including a 32-pixel TrueType
+atlas and ASCII glyphs 32..126). Alternatively, declare a font options set:
+
+```nix
+assets.fonts.ui = {
+  path = ./ui.ttf;
+  size = 48;
+  codepoints = (builtins.genList (n: n + 32) 95) ++ [ 228 955 ]; # ASCII + ä, λ
+};
+```
+
+`path` is required and accepts the same paths/context-bearing strings as above.
+`size` is the atlas rasterization size (integer `1..512`, default `32`), not the
+draw command's size. `codepoints` is an optional list of `1..4096` distinct
+Unicode scalars in `1..1114111`, excluding surrogates. Omitting it uses raylib's
+ASCII set; an empty list is an error. Include `63` (`?`) for a fallback glyph.
+Unsupported characters retain raylib's fallback behavior; no shaping or IME
+composition is added. `size`/`codepoints` require a `.ttf` or `.otf` file;
+`{ path = ./bitmap.fnt; }` works without these options. Bitmap fonts must retain
+their atlas images beside the font file. Copy/package the whole asset directory
+when using store paths for bitmap fonts.
 
 Run the asset example with your own files:
 
 ```sh
 nix run . -- examples/assets.nix --arg image ./logo.png --arg font ./ui.ttf
 ```
+
+### Text measurement
+
+`frame.measureText { text; size; font ? ...; }` returns float attributes
+`{ width; height; }` using the default font or a named loaded font. `text` is a
+context-free UTF-8 string without NUL bytes; `size` is a positive signed 32-bit
+integer, just as for drawing. Unknown attributes/font names are errors.
+
+Measurement uses raylib's logical layout metrics, not tight ink/pixel bounds.
+It handles Unicode codepoints, fallback glyphs and newlines with raylib's
+default two-pixel line gap. Custom fonts use one-pixel glyph spacing; omitting
+`font` matches `DrawText`'s minimum size of 10 and integer `size / 10` spacing.
+Empty strings return zero dimensions, and newline-only widths are clamped to
+zero. Missing glyphs are not synthesized. The function retains immutable CPU
+metrics, so it remains safe to call after its original window has closed or
+while another window is open; GPU resources are still released normally.
+
+For example, reuse the same text attributes for measuring and drawing:
+
+```nix
+frame:
+let
+  label = { text = "Nix: ä λ"; size = 32; font = "ui"; };
+  measured = frame.measureText label;
+in {
+  commands = [ (ray.text (label // {
+    x = builtins.floor ((frame.width - measured.width) / 2);
+    y = 100; color = ray.colors.black;
+  })) ];
+}
+```
+
+Try `nix run . -- examples/text.nix --arg font ./ui.ttf` for explicit Unicode
+glyphs and a centered label with its measured layout box.
 
 ### Sprite sheets
 
@@ -317,7 +371,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover primitive fills, command order, custom fonts, texture orientation,
+Assertions cover primitive fills, command order, Unicode glyph selection, measured
+text placement, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
 except for a one-step quantization tolerance in the alpha-blending check.
 Input tests preload a separate polling-state fixture for release edges, wheel

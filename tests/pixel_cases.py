@@ -25,7 +25,7 @@ class PixelCases:
         result = self.evaluate(f'''builtins.raylib {{
           width = 32; height = 32; hidden = true; fps = 0; maxFrames = 1;
           assets = {assets};
-        }} (_: {{ commands = {commands}; }})''', env={
+        }} (frame: {{ commands = {commands}; }})''', env={
             "LD_PRELOAD": preload, "NIXRAY_TEST_CAPTURE": str(destination),
         })
         self.assertEqual(result, {"frames": 1, "state": None})
@@ -208,3 +208,34 @@ class PixelCases:
         self.assert_pixel(pixels, 15, 15, (255, 255, 255))
         self.assert_pixel(pixels, 16, 4, (0, 0, 0))
         self.assert_pixel(pixels, 4, 16, (0, 0, 0))
+
+    def test_measured_text_layout_pixels(self):
+        pixels = self._capture('''let
+          measured = frame.measureText { font = "ui"; text = "AA"; size = 12; };
+          x = builtins.floor ((frame.width - measured.width) / 2);
+        in [
+          { op = "clear"; color = [0 0 0 255]; }
+          { op = "text"; font = "ui"; text = "AA"; inherit x; y = 4; size = 12; color = [255 255 255 255]; }
+        ]''', assets=f"{{ fonts.ui = {{ path = {self.font_path}; }}; }}")
+        self.assert_pixel(pixels, 2, 4, (0, 0, 0))
+        self.assert_pixel(pixels, 3, 4, (255, 255, 255))
+        self.assert_pixel(pixels, 15, 4, (0, 0, 0))
+        self.assert_pixel(pixels, 16, 4, (255, 255, 255))
+        self.assert_pixel(pixels, 27, 15, (255, 255, 255))
+        self.assert_pixel(pixels, 28, 15, (0, 0, 0))
+
+    def test_truetype_unicode_glyph_pixels(self):
+        path = self._truetype_path()
+
+        def render(text, specification):
+            return self._capture(f'''[
+              {{ op = "clear"; color = [0 0 0 255]; }}
+              {{ op = "text"; font = "ui"; text = "{text}"; x = 4; y = 4; size = 20; color = [255 255 255 255]; }}
+            ]''', assets=f"{{ fonts.ui = {specification}; }}")
+
+        self.assertEqual(render("λ", path), render("?", path))
+        configured = f"{{ path = {path}; size = 32; codepoints = [ 63 955 ]; }}"
+        glyph = render("λ", configured)
+        self.assertNotEqual(glyph, render("?", configured))
+        self.assertIn((255, 255, 255), glyph)
+        self.assertNotEqual(glyph, render("λ", f"{{ path = {path}; size = 48; codepoints = [ 63 955 ]; }}"))

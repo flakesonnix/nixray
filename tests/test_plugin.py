@@ -12,6 +12,7 @@ from asset_cases import AssetCases
 from texture_cases import TextureCases
 from pixel_cases import PixelCases
 from input_cases import InputCases
+from text_cases import TextCases
 
 
 parser = argparse.ArgumentParser()
@@ -25,7 +26,7 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, unittest.TestCase):
     capture_library = options.capture_library
     input_library = options.input_library
 
@@ -119,6 +120,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, unittest.Tes
             assert builtins.isInt frame.mouseX && builtins.isInt frame.mouseY;
             assert builtins.isFloat frame.mouseWheelX && builtins.isFloat frame.mouseWheelY;
             assert builtins.isString frame.textInput;
+            assert builtins.isFunction frame.measureText;
             assert builtins.isList frame.keysDown && builtins.isList frame.keysPressed;
             assert builtins.isList frame.mouseDown && builtins.isList frame.mousePressed;
             assert builtins.isList frame.keysReleased && builtins.isList frame.mouseReleased;

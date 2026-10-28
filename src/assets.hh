@@ -5,14 +5,22 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nixray {
 
 class Reader;
 
+struct FontSpec {
+    std::string path;
+    int size = 32;
+    std::vector<int> codepoints;
+    bool customized = false;
+};
+
 struct AssetSpecs {
     std::map<std::string, std::string> textures;
-    std::map<std::string, std::string> fonts;
+    std::map<std::string, FontSpec> fonts;
 };
 
 AssetSpecs assetSpecs(nix::EvalState & state, nix::PosIdx pos, nix::Value * value);

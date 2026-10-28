@@ -3,6 +3,7 @@
 #include "commands.hh"
 #include "input.hh"
 #include "reader.hh"
+#include "text.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
@@ -73,12 +74,13 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     if (!IsWindowReady()) r.fail("could not initialize a raylib window; check DISPLAY and OpenGL support");
     // This object (including partially loaded assets) is destroyed before Window.
     Assets assets(specs, r);
+    auto measureText = allocRootValue(textMeasurer(state, assets, specs));
     SetTargetFPS(fps);
 
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(17);
+        auto frame = state.buildBindings(18);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());
@@ -86,6 +88,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         frame.alloc("height").mkInt(GetScreenHeight());
         addInput(state, frame);
         frame.insert(state.symbols.create("state"), *current);
+        frame.insert(state.symbols.create("measureText"), *measureText);
         // Callbacks may retain their input inside state (including closures).
         // Never hand the evaluator a pointer to a stack-allocated Value.
         auto input = allocRootValue(state.allocValue());

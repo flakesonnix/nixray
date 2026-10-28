@@ -2,6 +2,7 @@
 #include "assets.hh"
 #include "reader.hh"
 #include "texture.hh"
+#include "text.hh"
 
 namespace nixray {
 
@@ -23,28 +24,7 @@ std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, cons
         } else if (op == "texture") {
             result.emplace_back(textureCommand(state, pos, *entry, assets));
         } else if (op == "text") {
-            r.fields(*entry, {"op", "text", "x", "y", "size", "color", "font"});
-            auto text = r.string(r.required(*entry, "text"));
-            int x = r.integerAttr(*entry, "x"), y = r.integerAttr(*entry, "y");
-            int size = r.integerAttr(*entry, "size", 1);
-            auto color = r.color(r.required(*entry, "color"));
-            auto * fontValue = r.optional(*entry, "font");
-            bool customFont = fontValue != nullptr;
-            Font font{};
-            if (customFont) {
-                auto name = r.string(*fontValue);
-                if (name.empty()) r.fail("font name must not be empty");
-                if (assets) {
-                    auto * found = assets->font(name);
-                    if (!found) r.fail("unknown font '" + name + "'");
-                    font = *found;
-                }
-            }
-            result.emplace_back([=] {
-                if (customFont) DrawTextEx(font, text.c_str(), {static_cast<float>(x), static_cast<float>(y)},
-                                           static_cast<float>(size), 1.0f, color);
-                else DrawText(text.c_str(), x, y, size, color);
-            });
+            result.emplace_back(textCommand(state, pos, *entry, assets));
         } else if (op == "rectangle" || op == "rectangleLines") {
             r.fields(*entry, {"op", "x", "y", "width", "height", "color"});
             int x = r.integerAttr(*entry, "x"), y = r.integerAttr(*entry, "y");
