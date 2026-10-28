@@ -31,6 +31,9 @@ void addInput(EvalState & state, BindingsBuilder & frame)
     constexpr int mouseCount = MOUSE_BUTTON_BACK + 1;
     frame.alloc("mouseX").mkInt(GetMouseX());
     frame.alloc("mouseY").mkInt(GetMouseY());
+    auto wheel = GetMouseWheelMoveV();
+    frame.alloc("mouseWheelX").mkFloat(wheel.x);
+    frame.alloc("mouseWheelY").mkFloat(wheel.y);
     frame.insert(state.symbols.create("keysDown"), inputList(state, keyCount, IsKeyDown));
     frame.insert(state.symbols.create("keysPressed"), inputList(state, keyCount, IsKeyPressed));
     frame.insert(state.symbols.create("keysReleased"), inputList(state, keyCount, IsKeyReleased));

@@ -49,3 +49,10 @@ class InputCases:
             {"key": False, "mouse": False}, {"key": True, "mouse": True},
             {"key": False, "mouse": False}, {"key": False, "mouse": False},
         ]})
+
+    def test_mouse_wheel_axes(self):
+        self.assertEqual(self._input_frames('{ x = frame.mouseWheelX; y = frame.mouseWheelY; }'),
+                         {"frames": 4, "state": [
+                             {"x": 1.5, "y": -2.0}, {"x": 0.0, "y": 1.25},
+                             {"x": -0.5, "y": 0.0}, {"x": 0.0, "y": 0.0},
+                         ]})

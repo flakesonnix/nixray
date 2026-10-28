@@ -58,3 +58,11 @@ extern "C" bool IsMouseButtonReleased(int button)
 {
     return (frame == 1 && button == MOUSE_BUTTON_LEFT) || (frame == 3 && button == MOUSE_BUTTON_BACK);
 }
+
+extern "C" Vector2 GetMouseWheelMoveV()
+{
+    if (frame == 0) return {1.5f, -2.0f};
+    if (frame == 1) return {0.0f, 1.25f};
+    if (frame == 2) return {-0.5f, 0.0f};
+    return {0.0f, 0.0f};
+}

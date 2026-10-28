@@ -123,6 +123,7 @@ The callback receives a fresh attribute set each frame:
   time = 0.0; delta = 0.0;   # Raylib seconds and previous frame duration
   width = 800; height = 450; # Current drawable dimensions
   mouseX = 0; mouseY = 0;
+  mouseWheelX = 0.0; mouseWheelY = 0.0; # Per-frame wheel movement on both axes
   keysDown = []; keysPressed = [];    # Lists of raylib integer key codes
   keysReleased = [];                 # Released during this frame
   mouseDown = []; mousePressed = []; # Lists of raylib mouse button codes
@@ -138,6 +139,10 @@ Only `commands` is required. Omitted `state` preserves the previous state.
 
 `ray.keyReleased frame key` and `ray.mouseReleased frame button` test the release
 lists; down/pressed fields and their existing behavior are unchanged.
+
+Wheel values are signed per-frame deltas from raylib, including fractional
+movement; they are not accumulated scroll positions. Store a running total in
+application state if needed.
 
 ### Drawing commands
 

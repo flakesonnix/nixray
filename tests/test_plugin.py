@@ -117,6 +117,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, unittest.Tes
             assert frame.width == 64 && frame.height == 64;
             assert builtins.isFloat frame.time && builtins.isFloat frame.delta;
             assert builtins.isInt frame.mouseX && builtins.isInt frame.mouseY;
+            assert builtins.isFloat frame.mouseWheelX && builtins.isFloat frame.mouseWheelY;
             assert builtins.isList frame.keysDown && builtins.isList frame.keysPressed;
             assert builtins.isList frame.mouseDown && builtins.isList frame.mousePressed;
             assert builtins.isList frame.keysReleased && builtins.isList frame.mouseReleased;
