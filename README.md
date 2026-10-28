@@ -195,6 +195,11 @@ The pivot is placed at command position `(x, y)` before rotation. For a 32x32
 source at `scale = 4`, `origin = { x = 64; y = 64; }` rotates around its center.
 The default is `{ x = 0; y = 0; }`, retaining the existing top-left anchor.
 
+`flipX` and `flipY` are optional booleans (both default `false`). They mirror
+the selected image region before scaling/rotation, without changing its output
+size or pivot. Source widths/heights remain positive; use these flags rather
+than negative dimensions.
+
 For sprites/atlases, `texture` accepts `source = { x; y; width; height; }` in
 image pixels. Offsets must be nonnegative integers and dimensions positive
 integers. The rectangle must fit the loaded texture; cropping happens before

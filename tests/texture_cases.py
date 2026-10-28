@@ -83,6 +83,35 @@ class TextureCases:
         self._draw_texture("origin = { x = -3.0e38; y = 0; }; scale = 1.0e38;",
                            error="texture origin and dimensions")
 
+    def test_texture_flips(self):
+        for attributes in ("flipX = true;", "flipY = true;", "flipX = true; flipY = true;"):
+            with self.subTest(attributes=attributes):
+                self.assertEqual(self._draw_texture(attributes), {"frames": 2, "state": None})
+
+    def test_bad_texture_flips(self):
+        for name in ("flipX", "flipY"):
+            for value in ("1", "null", '"true"'):
+                with self.subTest(name=name, value=value):
+                    self.evaluate(f'''builtins.raylibValidate [
+                      {{ op = "texture"; texture = "unloaded"; x = 0; y = 0; {name} = {value}; }}
+                    ]''', error="expected a Boolean")
+
+    def test_flips_preserve_source_bounds(self):
+        self._draw_texture("source = { x = 1; y = 0; width = 2; height = 1; }; flipX = true;",
+                           error="source rectangle exceeds")
+        self._draw_texture("source = { x = 0; y = 1; width = 1; height = 2; }; flipY = true;",
+                           error="source rectangle exceeds")
+        self.evaluate('''builtins.raylibValidate [
+          { op = "texture"; texture = "unloaded"; x = 0; y = 0; flipX = true;
+            source = { x = 0; y = 0; width = -1; height = 1; }; }
+        ]''', error="'width' must be an integer")
+
+    def test_texture_flip_validation(self):
+        self.assertEqual(self.evaluate('''builtins.raylibValidate [
+          { op = "texture"; texture = "unloaded"; x = 0; y = 0;
+            flipX = true; flipY = true; origin = { x = 1; y = 1; }; rotation = 90; }
+        ]''', flags=["--pure-eval"], env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 1)
+
     def test_texture_source(self):
         for attributes in (
             "source = { x = 0; y = 0; width = 2; height = 2; };",

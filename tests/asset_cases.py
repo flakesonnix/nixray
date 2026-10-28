@@ -42,6 +42,23 @@ class AssetCases:
             + chunk(b"IEND", b"")
         )
         cls.pattern_path = json.dumps(str(pattern))
+        atlas = cls.asset_directory / "atlas.png"
+        border = (255, 0, 255, 255)
+        rows = [
+            [border] * 4,
+            [border, (255, 0, 0, 255), (0, 255, 0, 255), border],
+            [border, (0, 0, 255, 255), (255, 255, 0, 255), border],
+            [border] * 4,
+        ]
+        atlas.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"".join(
+                b"\0" + b"".join(bytes(color) for color in row) for row in rows
+            )))
+            + chunk(b"IEND", b"")
+        )
+        cls.atlas_path = json.dumps(str(atlas))
         font = cls.asset_directory / "tiny.fnt"
         font.write_text(
             'info face="nixray-test" size=2\n'

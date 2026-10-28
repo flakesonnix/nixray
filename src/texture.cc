@@ -12,7 +12,7 @@ namespace nixray {
 Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
     Reader r(state, pos);
-    r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source", "origin"});
+    r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source", "origin", "flipX", "flipY"});
     auto name = r.string(r.required(value, "texture"));
     if (name.empty()) r.fail("texture name must not be empty");
     int x = r.integerAttr(value, "x"), y = r.integerAttr(value, "y");
@@ -23,6 +23,8 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
     if (scale == 0) r.fail("scale must be positive");
     auto * rotationValue = r.optional(value, "rotation");
     float rotation = rotationValue ? r.number(*rotationValue, "rotation") : 0.0f;
+    bool flipX = r.defaultBool(value, "flipX", false);
+    bool flipY = r.defaultBool(value, "flipY", false);
     Vector2 origin{};
     if (auto * originValue = r.optional(value, "origin")) {
         r.fields(*originValue, {"x", "y"});
@@ -60,6 +62,9 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                              std::abs(static_cast<double>(destination.height) - origin.y));
     if (std::hypot(reachX, reachY) > std::numeric_limits<float>::max())
         r.fail("texture origin and dimensions must fit finite raylib coordinates");
+    // Only reverse UV traversal, after checking positive source/destination sizes.
+    if (flipX) source.width = -source.width;
+    if (flipY) source.height = -source.height;
     return [=] { DrawTexturePro(texture, source, destination, origin, rotation, tint); };
 }
 

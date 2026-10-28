@@ -3,6 +3,13 @@
 import os
 from pathlib import Path
 
+MIRROR_CASES = (
+    ("flipX = false; flipY = false;", [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]),
+    ("flipX = true;", [(0, 255, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255)]),
+    ("flipY = true;", [(0, 0, 255), (255, 255, 0), (255, 0, 0), (0, 255, 0)]),
+    ("flipX = true; flipY = true;", [(255, 255, 0), (0, 0, 255), (0, 255, 0), (255, 0, 0)]),
+)
+
 
 class PixelCases:
     def _capture(self, commands, *, assets="{}"):
@@ -48,11 +55,11 @@ class PixelCases:
         self.assert_pixel(pixels, 1, 3, (0, 0, 0))
         self.assert_pixel(pixels, 3, 8, (0, 0, 0))
 
-    def _texture_pixels(self, attributes=""):
+    def _texture_pixels(self, attributes="", *, image=None):
         return self._capture(f'''[
           {{ op = "clear"; color = [0 0 0 255]; }}
           {{ op = "texture"; texture = "pattern"; x = 10; y = 10; {attributes} }}
-        ]''', assets=f"{{ textures.pattern = {self.pattern_path}; }}")
+        ]''', assets=f"{{ textures.pattern = {image or self.pattern_path}; }}")
 
     def test_texture_native_pixels(self):
         pixels = self._texture_pixels()
@@ -123,6 +130,43 @@ class PixelCases:
     def test_texture_zero_origin_compatibility(self):
         self.assertEqual(self._texture_pixels("scale = 2; rotation = -90;"),
                          self._texture_pixels("scale = 2; rotation = -90; origin = { x = 0; y = 0; };"))
+
+    def test_texture_mirrored_pixels(self):
+        for attributes, colors in MIRROR_CASES:
+            with self.subTest(attributes=attributes):
+                pixels = self._texture_pixels("scale = 2; " + attributes)
+                for (x, y), color in zip([(10, 10), (12, 10), (10, 12), (12, 12)], colors):
+                    self.assert_pixel(pixels, x, y, color)
+                self.assert_pixel(pixels, 9, 10, (0, 0, 0))
+                self.assert_pixel(pixels, 14, 10, (0, 0, 0))
+
+    def test_texture_mirrored_atlas_pixels(self):
+        for attributes, colors in MIRROR_CASES:
+            with self.subTest(attributes=attributes):
+                pixels = self._texture_pixels(
+                    "source = { x = 1; y = 1; width = 2; height = 2; }; scale = 2; " + attributes,
+                    image=self.atlas_path,
+                )
+                for (x, y), color in zip([(10, 10), (12, 10), (10, 12), (12, 12)], colors):
+                    self.assert_pixel(pixels, x, y, color)
+
+    def test_texture_mirrored_pivot_rotation_pixels(self):
+        for attributes, colors in MIRROR_CASES:
+            with self.subTest(attributes=attributes):
+                pixels = self._texture_pixels(
+                    "source = { x = 1; y = 1; width = 2; height = 2; }; "
+                    "scale = 2; rotation = 90; origin = { x = 2; y = 2; }; " + attributes,
+                    image=self.atlas_path,
+                )
+                for (x, y), color in zip([(10, 8), (10, 10), (8, 8), (8, 10)], colors):
+                    self.assert_pixel(pixels, x, y, color)
+                self.assert_pixel(pixels, 7, 8, (0, 0, 0))
+                self.assert_pixel(pixels, 12, 8, (0, 0, 0))
+
+    def test_texture_false_flip_compatibility(self):
+        attributes = "scale = 2; rotation = 90; origin = { x = 2; y = 2; };"
+        self.assertEqual(self._texture_pixels(attributes),
+                         self._texture_pixels(attributes + "flipX = false; flipY = false;"))
 
     def test_texture_tint_pixels(self):
         pixels = self._texture_pixels("tint = [80 120 200 255];")
