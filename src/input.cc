@@ -27,12 +27,16 @@ Value * inputList(EvalState & state, int count, bool (*read)(int))
 
 void addInput(EvalState & state, BindingsBuilder & frame)
 {
+    constexpr int keyCount = KEY_KB_MENU + 1;
+    constexpr int mouseCount = MOUSE_BUTTON_BACK + 1;
     frame.alloc("mouseX").mkInt(GetMouseX());
     frame.alloc("mouseY").mkInt(GetMouseY());
-    frame.insert(state.symbols.create("keysDown"), inputList(state, 349, IsKeyDown));
-    frame.insert(state.symbols.create("keysPressed"), inputList(state, 349, IsKeyPressed));
-    frame.insert(state.symbols.create("mouseDown"), inputList(state, 7, IsMouseButtonDown));
-    frame.insert(state.symbols.create("mousePressed"), inputList(state, 7, IsMouseButtonPressed));
+    frame.insert(state.symbols.create("keysDown"), inputList(state, keyCount, IsKeyDown));
+    frame.insert(state.symbols.create("keysPressed"), inputList(state, keyCount, IsKeyPressed));
+    frame.insert(state.symbols.create("keysReleased"), inputList(state, keyCount, IsKeyReleased));
+    frame.insert(state.symbols.create("mouseDown"), inputList(state, mouseCount, IsMouseButtonDown));
+    frame.insert(state.symbols.create("mousePressed"), inputList(state, mouseCount, IsMouseButtonPressed));
+    frame.insert(state.symbols.create("mouseReleased"), inputList(state, mouseCount, IsMouseButtonReleased));
 }
 
 } // namespace nixray

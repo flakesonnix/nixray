@@ -124,7 +124,9 @@ The callback receives a fresh attribute set each frame:
   width = 800; height = 450; # Current drawable dimensions
   mouseX = 0; mouseY = 0;
   keysDown = []; keysPressed = [];    # Lists of raylib integer key codes
+  keysReleased = [];                 # Released during this frame
   mouseDown = []; mousePressed = []; # Lists of raylib mouse button codes
+  mouseReleased = [];
   state = null;                     # Previous frame's application state
 }
 ```
@@ -133,6 +135,9 @@ It returns `{ commands = [ ... ]; state = nextState; close = false; }`.
 Only `commands` is required. Omitted `state` preserves the previous state.
 `close = true` exits **after** drawing that frame. The native loop returns
 `{ frames = totalRenderedFrames; state = finalState; }`.
+
+`ray.keyReleased frame key` and `ray.mouseReleased frame button` test the release
+lists; down/pressed fields and their existing behavior are unchanged.
 
 ### Drawing commands
 
@@ -266,7 +271,8 @@ cmake -S . -B build
 cmake --build build
 env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a python3 tests/test_plugin.py \
   --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
-  --capture-library "$PWD/build/nixray-test-capture.so"
+  --capture-library "$PWD/build/nixray-test-capture.so" \
+  --input-library "$PWD/build/nixray-test-input.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev

@@ -115,13 +115,15 @@ stdenv.mkDerivation {
       python3 ../tests/test_plugin.py \
         --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
         --plugin "$PWD/nixray.so" \
-        --capture-library "$PWD/nixray-test-capture.so"
+        --capture-library "$PWD/nixray-test-capture.so" \
+        --input-library "$PWD/nixray-test-input.so"
     runHook postCheck
   '';
 
   installCheckPhase = ''
     runHook preInstallCheck
     test ! -e "$out/lib/nix/plugins/nixray-test-capture.so"
+    test ! -e "$out/lib/nix/plugins/nixray-test-input.so"
     unset WAYLAND_DISPLAY
     export XDG_SESSION_TYPE=x11
     export HOME="$TMPDIR/home"

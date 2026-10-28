@@ -28,6 +28,8 @@ rec {
   mouse = { left = 0; right = 1; middle = 2; };
   keyDown = frame: key: builtins.elem key frame.keysDown;
   keyPressed = frame: key: builtins.elem key frame.keysPressed;
+  keyReleased = frame: key: builtins.elem key frame.keysReleased;
+  mouseReleased = frame: button: builtins.elem button frame.mouseReleased;
 
   clear = color: { op = "clear"; inherit color; };
   text = args: args // { op = "text"; };

@@ -22,10 +22,12 @@ install(TARGETS nixray LIBRARY DESTINATION lib/nix/plugins)
 
 include(CTest)
 if(BUILD_TESTING)
-    # This hook is only preloaded by tests and is never installed with the plugin.
-    add_library(nixray-test-capture MODULE tests/capture.cc)
-    target_compile_features(nixray-test-capture PRIVATE cxx_std_23)
-    target_compile_options(nixray-test-capture PRIVATE -Wall -Wextra)
-    target_link_libraries(nixray-test-capture PRIVATE PkgConfig::RAYLIB ${CMAKE_DL_LIBS})
-    set_target_properties(nixray-test-capture PROPERTIES PREFIX "")
+    # These hooks are only preloaded by tests and never installed with the plugin.
+    foreach(hook IN ITEMS capture input)
+        add_library(nixray-test-${hook} MODULE tests/${hook}.cc)
+        target_compile_features(nixray-test-${hook} PRIVATE cxx_std_23)
+        target_compile_options(nixray-test-${hook} PRIVATE -Wall -Wextra)
+        target_link_libraries(nixray-test-${hook} PRIVATE PkgConfig::RAYLIB ${CMAKE_DL_LIBS})
+        set_target_properties(nixray-test-${hook} PROPERTIES PREFIX "")
+    endforeach()
 endif()

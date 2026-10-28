@@ -11,20 +11,23 @@ import unittest
 from asset_cases import AssetCases
 from texture_cases import TextureCases
 from pixel_cases import PixelCases
+from input_cases import InputCases
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--nix", required=True)
 parser.add_argument("--plugin", required=True)
 parser.add_argument("--capture-library")
+parser.add_argument("--input-library")
 options, remaining = parser.parse_known_args()
 ROOT = Path(__file__).resolve().parent.parent
 RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, PixelCases, unittest.TestCase):
+class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, unittest.TestCase):
     capture_library = options.capture_library
+    input_library = options.input_library
 
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(
@@ -116,6 +119,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, unittest.TestCase):
             assert builtins.isInt frame.mouseX && builtins.isInt frame.mouseY;
             assert builtins.isList frame.keysDown && builtins.isList frame.keysPressed;
             assert builtins.isList frame.mouseDown && builtins.isList frame.mousePressed;
+            assert builtins.isList frame.keysReleased && builtins.isList frame.mouseReleased;
             {{ commands = []; state = frame.state + 1; }})'''),
             {"frames": 3, "state": 3})
 
