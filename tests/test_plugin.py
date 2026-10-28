@@ -18,6 +18,7 @@ from clip_cases import ClipCases
 from camera_cases import CameraCases
 from render_cases import RenderCases
 from collision_cases import CollisionCases
+from blend_cases import BlendCases
 
 
 parser = argparse.ArgumentParser()
@@ -33,7 +34,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
-    CollisionCases, unittest.TestCase,
+    CollisionCases, BlendCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
@@ -89,6 +90,7 @@ class PluginTests(
             (ray.clip {{ x = 0; y = 0; width = 32; height = 32;
                         commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.camera2D {{ camera = {{}}; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
+            (ray.blend {{ mode = "additive"; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.paint {{ texture = "scene"; commands = [ (ray.pixel {{ x = 1; y = 1; inherit color; }}) ]; }})
             (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
             (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
@@ -111,7 +113,7 @@ class PluginTests(
           rendered = ray.run ({CONFIG} // {{ inherit assets; }}) (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 18, "rendered": {"frames": 3, "state": 2},
+            "validated": 19, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

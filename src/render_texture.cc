@@ -1,4 +1,5 @@
 #include "render_texture.hh"
+#include "blend.hh"
 
 #include <rlgl.h>
 #include <utility>
@@ -15,14 +16,17 @@ void initializeRenderTexture(RenderTexture2D target)
 }
 
 Command paintCommand(RenderTexture2D target, const std::optional<ClipBounds> & parent,
-                     const std::optional<Camera2D> & camera, bool clear, std::vector<Command> batch)
+                     const std::optional<Camera2D> & camera, BlendMode parentBlend,
+                     bool clear, std::vector<Command> batch)
 {
-    return [target, parent, camera, clear, batch = std::move(batch)] {
+    return [target, parent, camera, parentBlend, clear, batch = std::move(batch)] {
         if (parent) pauseWindowClip();
         {
             // Child clips clamp against the target, not against the window.
             SurfaceGuard guard{target.texture.width, target.texture.height};
             BeginTextureMode(target);
+            // Target drawing starts with alpha, independently of its later stamps.
+            BlendScope blend(BLEND_ALPHA, parentBlend);
             // Repainting replaces, never composes with, previous contents.
             if (clear) {
                 rlClearColor(0.0f, 0.0f, 0.0f, 0.0f);

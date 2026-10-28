@@ -12,6 +12,7 @@ namespace nixray {
 void initializeRenderTexture(RenderTexture2D target);
 
 Command paintCommand(RenderTexture2D target, const std::optional<ClipBounds> & parent,
-                     const std::optional<Camera2D> & camera, bool clear, std::vector<Command> batch);
+                     const std::optional<Camera2D> & camera, BlendMode parentBlend,
+                     bool clear, std::vector<Command> batch);
 
 } // namespace nixray

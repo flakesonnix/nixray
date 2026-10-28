@@ -43,6 +43,7 @@ rec {
   clear = color: { op = "clear"; inherit color; };
   clip = args: args // { op = "clip"; };
   camera2D = args: args // { op = "camera2D"; };
+  blend = args: args // { op = "blend"; };
   paint = args: args // { op = "paint"; };
   text = args: args // { op = "text"; };
   texture = args: args // { op = "texture"; };

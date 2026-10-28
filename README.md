@@ -180,6 +180,7 @@ nonnegative integers or floats, as do ellipse radii.
 | `clear` | `color` |
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `camera2D` | `camera`, `commands` |
+| `blend` | `mode`, `commands` |
 | `paint` | `texture` (render texture name), `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
@@ -268,7 +269,8 @@ Coordinates are absolute window coordinates, not offsets from the parent clip.
 integers. Bounds are safely clamped to the window; the right and bottom edges
 are excluded. Nested clips intersect their parent's region and restore it on
 exit. Leaving the outermost clip restores unclipped drawing, including in
-subsequent frames. Clips and cameras share a maximum nesting depth of 64 scopes.
+subsequent frames. Clips, cameras, blends and paints share a maximum nesting depth
+of 64 scopes.
 
 The scope applies to shapes, text, textures and `clear`. Clears affect only the
 active region and preserve command order by flushing earlier queued geometry.
@@ -331,11 +333,64 @@ worldMouse = ray.screenToWorld2D camera { x = frame.mouseX; y = frame.mouseY; };
 Camera transforms apply to shapes, text and textures. Clip rectangles remain in
 absolute window coordinates regardless of whether the camera or clip is outermost.
 `clear` still clears the active clip/window, not a transformed world rectangle.
-Input coordinates and `frame.measureText` remain untransformed. Camera and clip
-children are validated before drawing and share the 64-scope nesting limit.
+Input coordinates and `frame.measureText` remain untransformed. Scope children
+are validated before drawing; cameras, clips, blends and paints share the
+64-scope nesting limit.
 
 Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
 arrows rotate, and a world-space marker follows the mouse beneath a fixed HUD.
+
+### Blend modes
+
+`blend` changes how each child draw combines with pixels already in the active
+window/render texture. The `mode` string and `commands` list are required:
+
+```nix
+ray.blend {
+  mode = "additive";
+  commands = [
+    (ray.circle { x = 120; y = 100; radius = 40; color = ray.rgba 240 120 80 160; })
+    (ray.circle { x = 160; y = 100; radius = 40; color = ray.rgba 80 200 240 160; })
+  ];
+}
+```
+
+Only these four raylib presets are supported. In the formulas, `S` is the source
+RGB after texture/tint multiplication, `D` is the existing destination RGB, and
+`As` is source alpha, all normalized to `0..1`. Results clamp to `0..1`:
+
+| `mode` | raylib preset | RGB equation |
+| --- | --- | --- |
+| `alpha` | `BLEND_ALPHA` | `S * As + D * (1 - As)` |
+| `additive` | `BLEND_ADDITIVE` | `S * As + D` |
+| `multiply` | `BLEND_MULTIPLIED` | `S * D + D * (1 - As)` |
+| `subtract` | `BLEND_SUBTRACT_COLORS` | `S - D` |
+
+These are native formulas, not Photoshop-style modes: **subtract is source minus
+destination**, ignoring source alpha in RGB; multiply's `S * D` term is also not
+weighted by source alpha, so even alpha-zero draws can change pixels in these
+two modes. Native blend factors/equations also apply to the alpha channel; there
+are no custom factors, separate-alpha settings or premultiplied-alpha modes.
+
+Nested blends **replace**, rather than combine with, the outer mode. Leaving a
+scope restores its parent; leaving the outermost restores normal alpha drawing.
+Mode changes flush queued geometry, preserving command order. Blending applies
+to individual shapes, text and textures, not to an automatically flattened group.
+It does not change coordinates, cameras or clipping. `clear` bypasses blending
+and still clears only the active clip/target, in list order.
+
+`paint` starts its children in **alpha mode**, independent of any enclosing blend.
+Use an explicit blend inside `paint` to choose another mode. On exit the enclosing
+mode is restored, and later texture stamps use whatever blend is active where
+they are drawn. This separates painting a texture from compositing it.
+
+Blend children are fully validated before drawing, including in pure validation
+and invisible clips. Unknown modes/attributes are errors. Blends share the
+64-scope nesting budget with clips, cameras and paints. `raylibValidate` counts
+only the top-level list entries, not nested child commands.
+
+Try `nix run . -- examples/blend.nix` for a four-panel comparison. The mouse
+wheel changes source alpha; labels outside each blend scope retain normal alpha.
 
 ### Collision and picking
 
@@ -431,18 +486,19 @@ closes.
 contents with transparent black before the children draw. Set `clear = false`
 to accumulate across paints and frames. Children start a fresh coordinate
 system with `(0, 0)` at the texture's top-left: enclosing clips and cameras do
-not apply inside, and paint children may freely use `clip`, `camera2D`, shapes,
-text and `texture` stamps. Painting may not nest inside another paint, and a
+not apply inside, and blending starts in alpha mode. Paint children may freely
+use `clip`, `camera2D`, `blend`, shapes, text and `texture` stamps.
+Painting may not nest inside another paint, and a
 `texture` command may not stamp the texture being painted; alternating two
 textures covers ping-pong effects.
 
 When a paint appears inside a window clip, the scissor pauses for the target
-drawing and resumes for following commands, while an enclosing camera transform
-is restored after the paint. Stamp attributes work as for loaded images
+drawing and resumes for following commands, while enclosing camera and blend
+state is restored after the paint. Stamp attributes work as for loaded images
 (`tint`, `scale`, `rotation`, `source`, `origin`, `flipX`/`flipY`), and crop
 rectangles address the last painted image in image pixels. Paint children are
-validated before drawing, share the 64-scope nesting limit with clips and
-cameras, and pure validation recurses into them without opening a window; render
+validated before drawing, share the 64-scope nesting limit with clips, cameras
+and blends, and pure validation recurses into them without opening a window; render
 texture names resolve only when running with loaded assets.
 
 Try `nix run . -- examples/render.nix`: one square accumulates per frame into a
@@ -611,7 +667,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover camera transforms/restoration, pure coordinate round trips,
+Assertions cover blend equations, nested mode restoration, isolated render-target
+blending, camera transforms/restoration, pure coordinate round trips,
 pure collision queries/boundaries/overflow, camera-aware picking and geometry-driven drawing,
 camera/clip combinations, nested clipping, scissor restoration across frames, clipped
 clears, extreme clip bounds, shape fills/outlines, both triangle windings, degenerate shapes,
@@ -620,7 +677,7 @@ text placement, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending, plus render texture
 painting, stamp orientation/mirroring, crop and scaling, cross-frame persistence,
 incremental painting, clips/cameras inside targets, and transparent initialization. RGB comparisons are exact,
-except for a one-step quantization tolerance in the alpha-blending check.
+except for a one-step quantization tolerance in fractional blend checks.
 Input tests preload a separate polling-state fixture for release edges, wheel
 axes, UTF-8 queues and snapshot lifetime checks. They do not require physical
 devices or claim to cover OS event delivery or IME integration. Neither test
