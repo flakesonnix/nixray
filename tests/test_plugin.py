@@ -15,6 +15,7 @@ from input_cases import InputCases
 from text_cases import TextCases
 from shape_cases import ShapeCases
 from clip_cases import ClipCases
+from camera_cases import CameraCases
 
 
 parser = argparse.ArgumentParser()
@@ -28,7 +29,9 @@ RAY = f"import {ROOT / 'lib'}"
 CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
-class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, unittest.TestCase):
+class PluginTests(
+    AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, unittest.TestCase,
+):
     capture_library = options.capture_library
     input_library = options.input_library
 
@@ -54,10 +57,14 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, S
           legacyRun = builtins.typeOf builtins.raylibRun;
           validate = builtins.typeOf builtins.raylibValidate;
           version = builtins.raylibVersion;
+          worldToScreen = builtins.typeOf builtins.raylibWorldToScreen2D;
+          screenToWorld = builtins.typeOf builtins.raylibScreenToWorld2D;
         }''')
         self.assertEqual(result["raylib"], "lambda")
         self.assertEqual(result["legacyRun"], "lambda")
         self.assertEqual(result["validate"], "lambda")
+        self.assertEqual(result["worldToScreen"], "lambda")
+        self.assertEqual(result["screenToWorld"], "lambda")
         self.assertIsInstance(result["version"], str)
         self.assertTrue(result["version"])
 
@@ -77,6 +84,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, S
             (ray.clear ray.colors.white)
             (ray.clip {{ x = 0; y = 0; width = 32; height = 32;
                         commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
+            (ray.camera2D {{ camera = {{}}; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
             (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
             (ray.rectangleLines {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
@@ -98,7 +106,7 @@ class PluginTests(AssetCases, TextureCases, PixelCases, InputCases, TextCases, S
           rendered = ray.run {CONFIG} (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 16, "rendered": {"frames": 3, "state": 2},
+            "validated": 17, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

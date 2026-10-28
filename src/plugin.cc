@@ -1,5 +1,6 @@
 #include "commands.hh"
 #include "runtime.hh"
+#include "camera.hh"
 
 #include <nix/expr/primops.hh>
 #include <raylib.h>
@@ -49,6 +50,22 @@ RegisterPrimOp versionOp({
     .impl = [](EvalState & state, PosIdx, Value **, Value & out) {
         out.mkString(RAYLIB_VERSION, state.mem);
     },
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp worldToScreenOp({
+    .name = "__raylibWorldToScreen2D",
+    .args = {"camera", "point"},
+    .doc = "Convert a world-space { x; y; } point to screen coordinates using a 2D camera. Pure; no window required.",
+    .impl = worldToScreen2D,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp screenToWorldOp({
+    .name = "__raylibScreenToWorld2D",
+    .args = {"camera", "point"},
+    .doc = "Convert a screen-space { x; y; } point to world coordinates using a 2D camera. Pure; no window required.",
+    .impl = screenToWorld2D,
     .experimentalFeature = std::nullopt,
 });
 

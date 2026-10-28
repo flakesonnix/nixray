@@ -2,6 +2,8 @@ rec {
   run = builtins.raylib;
   validate = commands: builtins.raylibValidate commands;
   version = builtins.raylibVersion;
+  worldToScreen2D = builtins.raylibWorldToScreen2D;
+  screenToWorld2D = builtins.raylibScreenToWorld2D;
 
   rgba = r: g: b: a: [ r g b a ];
   rgb = r: g: b: rgba r g b 255;
@@ -33,6 +35,7 @@ rec {
 
   clear = color: { op = "clear"; inherit color; };
   clip = args: args // { op = "clip"; };
+  camera2D = args: args // { op = "camera2D"; };
   text = args: args // { op = "text"; };
   texture = args: args // { op = "texture"; };
   rectangle = args: args // { op = "rectangle"; };

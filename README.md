@@ -67,9 +67,12 @@ Loading the plugin registers:
 - `builtins.raylib config render`: own a window and its frame loop.
 - `builtins.raylibRun config render`: compatibility alias for `builtins.raylib`.
 - `builtins.raylibValidate commands`: recursively validate commands without a
-  display; return the top-level list length (each `clip` counts as one command).
+  display; return the top-level list length (each drawing scope counts as one command).
   Also usable during pure evaluation.
 - `builtins.raylibVersion`: linked raylib version string.
+- `builtins.raylibWorldToScreen2D camera point` and
+  `builtins.raylibScreenToWorld2D camera point`: pure coordinate conversions;
+  no display or window required.
 
 `builtins.raylib` is a native plugin-provided builtin, not a modification to
 stock Nix. The bundled launcher loads it automatically. No helper import is
@@ -172,6 +175,7 @@ nonnegative integers or floats, as do ellipse radii.
 | --- | --- |
 | `clear` | `color` |
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
+| `camera2D` | `camera`, `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
@@ -259,7 +263,7 @@ Coordinates are absolute window coordinates, not offsets from the parent clip.
 integers. Bounds are safely clamped to the window; the right and bottom edges
 are excluded. Nested clips intersect their parent's region and restore it on
 exit. Leaving the outermost clip restores unclipped drawing, including in
-subsequent frames. Up to 64 nested clips are supported.
+subsequent frames. Clips and cameras share a maximum nesting depth of 64 scopes.
 
 The scope applies to shapes, text, textures and `clear`. Clears affect only the
 active region and preserve command order by flushing earlier queued geometry.
@@ -271,6 +275,62 @@ recurses through children without opening a window or resolving asset names.
 
 Try `nix run . -- examples/clipping.nix`: the mouse wheel scrolls a list inside
 a panel while its header, border and footer remain outside the clip.
+
+### 2D cameras
+
+`camera2D` applies a camera to its child drawing commands and restores the
+previous camera afterwards. A nested camera **replaces**, rather than composes
+with, its parent's transform. Leaving the outermost camera restores normal
+window drawing, so HUD commands can follow it in the same list.
+
+```nix
+ray.camera2D {
+  camera = {
+    target = { x = 100; y = 50; };
+    offset = { x = 320; y = 180; };
+    zoom = 2.0;
+    rotation = 30.0;
+  };
+  commands = [
+    (ray.rectangle { x = 80; y = 30; width = 40; height = 40; color = ray.colors.blue; })
+  ];
+}
+```
+
+The `camera` set is required, but all of its fields are optional:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `target` | `{ x = 0; y = 0; }` | World point placed at `offset` |
+| `offset` | `{ x = 0; y = 0; }` | Target's position in window coordinates |
+| `zoom` | `1` | Positive scale; larger values enlarge the scene |
+| `rotation` | `0` | Clockwise degrees, normalized modulo 360 |
+
+Point coordinates, zoom and rotation accept finite integers/floats in raylib's
+float range. Provided point sets require both `x` and `y`. Unknown attributes,
+nonpositive zoom, overflowing matrices and transforms without a finite native
+inverse are rejected, including during pure command validation. This can reject
+extremely small/large positive zoom values even when the individual number is
+finite. The default `camera = {}` is the identity transform.
+
+`ray.worldToScreen2D camera { x; y; }` and `ray.screenToWorld2D camera { x; y; }`
+use the same camera defaults/math and return float coordinates `{ x; y; }`.
+They are aliases for the corresponding builtins and work during pure evaluation
+without opening a window. Non-finite conversion results are errors; round trips
+have raylib's single-precision rounding, not exact arithmetic. For mouse picking:
+
+```nix
+worldMouse = ray.screenToWorld2D camera { x = frame.mouseX; y = frame.mouseY; };
+```
+
+Camera transforms apply to shapes, text and textures. Clip rectangles remain in
+absolute window coordinates regardless of whether the camera or clip is outermost.
+`clear` still clears the active clip/window, not a transformed world rectangle.
+Input coordinates and `frame.measureText` remain untransformed. Camera and clip
+children are validated before drawing and share the 64-scope nesting limit.
+
+Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
+arrows rotate, and a world-space marker follows the mouse beneath a fixed HUD.
 
 ### Textures and fonts
 
@@ -433,7 +493,8 @@ shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are expos
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover nested clipping, scissor restoration across frames, clipped
+Assertions cover camera transforms/restoration, pure coordinate round trips,
+camera/clip combinations, nested clipping, scissor restoration across frames, clipped
 clears, extreme clip bounds, shape fills/outlines, both triangle windings, degenerate shapes,
 command order, Unicode glyph selection, measured
 text placement, custom fonts, texture orientation,

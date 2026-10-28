@@ -5,6 +5,7 @@
 #include "text.hh"
 #include "shapes.hh"
 #include "clip.hh"
+#include "camera.hh"
 
 #include <rlgl.h>
 #include <utility>
@@ -16,7 +17,7 @@ namespace {
 // Parse every command before BeginDrawing: evaluation errors cannot leave an
 // unfinished drawing batch, and command execution never re-enters the evaluator.
 std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
-                                     std::optional<ClipBounds> parent, unsigned depth)
+                                     std::optional<ClipBounds> parent, std::optional<Camera2D> activeCamera, unsigned depth)
 {
     Reader r(state, pos);
     state.forceList(value, pos, context);
@@ -25,10 +26,16 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
     auto values = value.listView();
     for (auto * entry : values) {
         auto op = r.string(r.required(*entry, "op"));
-        if (op == "clip") {
+        if (op == "camera2D") {
+            if (depth >= 64) r.fail("camera nesting must not exceed 64 levels");
+            r.fields(*entry, {"op", "camera", "commands"});
+            auto camera = cameraSpec(r, r.required(*entry, "camera"));
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, camera, depth + 1);
+            result.emplace_back(cameraCommand(camera, activeCamera, std::move(batch)));
+        } else if (op == "clip") {
             if (depth >= 64) r.fail("clip nesting must not exceed 64 levels");
             auto bounds = clipBounds(r, *entry, parent);
-            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, depth + 1);
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, activeCamera, depth + 1);
             result.emplace_back(clipCommand(bounds, parent, std::move(batch)));
         } else if (op == "clear") {
             r.fields(*entry, {"op", "color"});
@@ -90,7 +97,7 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
 
 std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
-    return compileCommands(state, pos, value, assets, std::nullopt, 0);
+    return compileCommands(state, pos, value, assets, std::nullopt, std::nullopt, 0);
 }
 
 } // namespace nixray
