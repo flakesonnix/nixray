@@ -4,6 +4,13 @@ rec {
   version = builtins.raylibVersion;
   worldToScreen2D = builtins.raylibWorldToScreen2D;
   screenToWorld2D = builtins.raylibScreenToWorld2D;
+  checkCollisionRecs = builtins.raylibCheckCollisionRecs;
+  checkCollisionCircles = builtins.raylibCheckCollisionCircles;
+  checkCollisionCircleRec = builtins.raylibCheckCollisionCircleRec;
+  checkCollisionPointRec = builtins.raylibCheckCollisionPointRec;
+  checkCollisionPointCircle = builtins.raylibCheckCollisionPointCircle;
+  checkCollisionLines = builtins.raylibCheckCollisionLines;
+  getCollisionRec = builtins.raylibGetCollisionRec;
 
   rgba = r: g: b: a: [ r g b a ];
   rgb = r: g: b: rgba r g b 255;

@@ -73,6 +73,10 @@ Loading the plugin registers:
 - `builtins.raylibWorldToScreen2D camera point` and
   `builtins.raylibScreenToWorld2D camera point`: pure coordinate conversions;
   no display or window required.
+- `builtins.raylibCheckCollisionRecs`, `raylibCheckCollisionCircles`,
+  `raylibCheckCollisionCircleRec`, `raylibCheckCollisionPointRec`,
+  `raylibCheckCollisionPointCircle`, `raylibCheckCollisionLines` and
+  `raylibGetCollisionRec`: pure geometry queries; see collision and picking below.
 
 `builtins.raylib` is a native plugin-provided builtin, not a modification to
 stock Nix. The bundled launcher loads it automatically. No helper import is
@@ -333,6 +337,65 @@ children are validated before drawing and share the 64-scope nesting limit.
 Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
 arrows rotate, and a world-space marker follows the mouse beneath a fixed HUD.
 
+### Collision and picking
+
+Collision queries are pure native raylib calls, available without a display,
+including during pure/restricted evaluation. The helpers below alias
+`builtins.raylibCheckCollisionRecs` etc.; no window or assets are needed.
+Each function takes two geometry sets:
+
+| Helper | First argument | Second argument | Result |
+| --- | --- | --- | --- |
+| `ray.checkCollisionRecs` | Rectangle | Rectangle | Boolean |
+| `ray.checkCollisionCircles` | Circle | Circle | Boolean |
+| `ray.checkCollisionCircleRec` | Circle | Rectangle | Boolean |
+| `ray.checkCollisionPointRec` | Point | Rectangle | Boolean |
+| `ray.checkCollisionPointCircle` | Point | Circle | Boolean |
+| `ray.checkCollisionLines` | Segment | Segment | `{ x; y; }` intersection, or `null` |
+| `ray.getCollisionRec` | Rectangle | Rectangle | Overlapping rectangle |
+
+Geometry sets contain only these required fields (no `op`/`color`):
+
+- Point: `{ x; y; }`
+- Rectangle: `{ x; y; width; height; }`
+- Circle: `{ x; y; radius; }`
+- Segment: `{ x1; y1; x2; y2; }`
+
+All fields accept finite integers/floats in raylib's float range; widths,
+heights and radii must be nonnegative. Unknown/missing fields, wrong types,
+non-finite coordinates and overflowing native arithmetic are errors, even when
+every individual input is finite. Queries retain raylib's single-precision
+rounding and underflow; they are not exact arbitrary-precision geometry.
+Returned point/rectangle fields are floats. If rectangles have no positive-area
+overlap, `getCollisionRec` returns `{ x = 0.0; y = 0.0; width = 0.0; height = 0.0; }`.
+
+Boundary behavior follows raylib:
+
+- Rectangle point picking includes left/top, excludes right/bottom. Edge-only
+  contact between positive-area rectangles is not a collision.
+- Circles include their boundary: tangency is a collision, including circle–rectangle
+  tangency. A zero-radius circle can contain its center.
+- Zero-size rectangles retain native behavior: point–rectangle picking is false,
+  but `checkCollisionRecs` can report true for a zero-size rectangle strictly
+  inside another one. Use `getCollisionRec`'s dimensions when positive area matters.
+- Segment endpoints count for nonparallel intersections. Parallel, collinear
+  (even overlapping) and zero-length segments return `null`. Raylib treats a
+  determinant smaller than float epsilon (about `1.19e-7`) as parallel.
+
+Convert window mouse coordinates before querying world-space shapes:
+
+```nix
+worldMouse = ray.screenToWorld2D camera { x = frame.mouseX; y = frame.mouseY; };
+hovered = ray.checkCollisionPointRec worldMouse {
+  x = 36; y = 48; width = 120; height = 80;
+};
+```
+
+Queries do not automatically apply cameras, clipping or render-target transforms;
+put both shapes in the same coordinate system yourself. Try
+`nix run . -- examples/collision.nix` for camera-aware mouse picking, rectangle
+overlap highlighting, circle contacts and a segment-intersection marker.
+
 ### Render textures
 
 `paint` redirects its child commands into a named render texture declared in the
@@ -549,6 +612,7 @@ only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
 Assertions cover camera transforms/restoration, pure coordinate round trips,
+pure collision queries/boundaries/overflow, camera-aware picking and geometry-driven drawing,
 camera/clip combinations, nested clipping, scissor restoration across frames, clipped
 clears, extreme clip bounds, shape fills/outlines, both triangle windings, degenerate shapes,
 command order, Unicode glyph selection, measured

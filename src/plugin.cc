@@ -1,6 +1,7 @@
 #include "commands.hh"
 #include "runtime.hh"
 #include "camera.hh"
+#include "collision.hh"
 
 #include <nix/expr/primops.hh>
 #include <raylib.h>
@@ -67,6 +68,69 @@ RegisterPrimOp screenToWorldOp({
     .args = {"camera", "point"},
     .doc = "Convert a screen-space { x; y; } point to world coordinates using a 2D camera. Pure; no window required.",
     .impl = screenToWorld2D,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionRecsOp({
+    .name = "__raylibCheckCollisionRecs",
+    .args = {"rectangle1", "rectangle2"},
+    .arity = 2,
+    .doc = "Check two { x; y; width; height; } rectangles for collision. Pure; no window required.",
+    .impl = checkCollisionRecs,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionCirclesOp({
+    .name = "__raylibCheckCollisionCircles",
+    .args = {"circle1", "circle2"},
+    .arity = 2,
+    .doc = "Check two { x; y; radius; } circles for collision, including tangency. Pure; no window required.",
+    .impl = checkCollisionCircles,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionCircleRecOp({
+    .name = "__raylibCheckCollisionCircleRec",
+    .args = {"circle", "rectangle"},
+    .arity = 2,
+    .doc = "Check a { x; y; radius; } circle against a { x; y; width; height; } rectangle. Pure; no window required.",
+    .impl = checkCollisionCircleRec,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionPointRecOp({
+    .name = "__raylibCheckCollisionPointRec",
+    .args = {"point", "rectangle"},
+    .arity = 2,
+    .doc = "Check a { x; y; } point against a rectangle; right/bottom edges are excluded. Pure; no window required.",
+    .impl = checkCollisionPointRec,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionPointCircleOp({
+    .name = "__raylibCheckCollisionPointCircle",
+    .args = {"point", "circle"},
+    .arity = 2,
+    .doc = "Check a { x; y; } point against a { x; y; radius; } circle, including its boundary. Pure; no window required.",
+    .impl = checkCollisionPointCircle,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionLinesOp({
+    .name = "__raylibCheckCollisionLines",
+    .args = {"line1", "line2"},
+    .arity = 2,
+    .doc = "Intersect two { x1; y1; x2; y2; } segments: return { x; y; } or null. Parallel/collinear lines return null. Pure.",
+    .impl = checkCollisionLines,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionRecOp({
+    .name = "__raylibGetCollisionRec",
+    .args = {"rectangle1", "rectangle2"},
+    .arity = 2,
+    .doc = "Return the overlapping { x; y; width; height; }, or an all-zero rectangle when there is no area overlap. Pure.",
+    .impl = getCollisionRec,
     .experimentalFeature = std::nullopt,
 });
 

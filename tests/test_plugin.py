@@ -17,6 +17,7 @@ from shape_cases import ShapeCases
 from clip_cases import ClipCases
 from camera_cases import CameraCases
 from render_cases import RenderCases
+from collision_cases import CollisionCases
 
 
 parser = argparse.ArgumentParser()
@@ -32,7 +33,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
-    unittest.TestCase,
+    CollisionCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
