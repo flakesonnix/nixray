@@ -17,6 +17,7 @@ add_library(nixray MODULE
     src/shapes.cc
     src/clip.cc
     src/camera.cc
+    src/render_texture.cc
 )
 target_compile_features(nixray PRIVATE cxx_std_23)
 target_compile_options(nixray PRIVATE -Wall -Wextra)

@@ -6,15 +6,19 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 
 namespace nixray {
 
-Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
+Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
+                       const std::string * activeTexture)
 {
     Reader r(state, pos);
     r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source", "origin", "flipX", "flipY"});
     auto name = r.string(r.required(value, "texture"));
     if (name.empty()) r.fail("texture name must not be empty");
+    if (activeTexture && *activeTexture == name)
+        r.fail("cannot stamp texture '" + name + "' into its own paint");
     int x = r.integerAttr(value, "x"), y = r.integerAttr(value, "y");
     auto * tintValue = r.optional(value, "tint");
     auto tint = tintValue ? r.color(*tintValue) : WHITE;
@@ -32,10 +36,15 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
         origin.y = r.number(r.required(*originValue, "y"), "origin.y");
     }
     Texture2D texture{};
+    // Render targets are attached bottom-up relative to their logical image;
+    // drawing one requires inverted vertical UV traversal.
+    bool rerouted = false;
     if (assets) {
-        auto * found = assets->texture(name);
-        if (!found) r.fail("unknown texture '" + name + "'");
-        texture = *found;
+        if (auto * found = assets->texture(name)) texture = *found;
+        else if (auto * target = assets->renderTexture(name)) {
+            texture = target->texture;
+            rerouted = true;
+        } else r.fail("unknown texture '" + name + "'");
     }
     int sx = 0, sy = 0, width = texture.width, height = texture.height;
     if (auto * sourceValue = r.optional(value, "source")) {
@@ -48,13 +57,11 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                        static_cast<int64_t>(sy) + height > texture.height))
             r.fail("source rectangle exceeds texture '" + name + "'");
     }
-    Rectangle source{static_cast<float>(sx), static_cast<float>(sy),
-                     static_cast<float>(width), static_cast<float>(height)};
     // Bound the diagonal so rotating a very large quad cannot overflow floats.
-    if (std::hypot(static_cast<double>(source.width) * scale,
-                   static_cast<double>(source.height) * scale) > std::numeric_limits<float>::max())
+    if (std::hypot(static_cast<double>(width) * scale,
+                   static_cast<double>(height) * scale) > std::numeric_limits<float>::max())
         r.fail("scaled texture dimensions must fit finite raylib coordinates");
-    Rectangle destination{static_cast<float>(x), static_cast<float>(y), source.width * scale, source.height * scale};
+    Rectangle destination{static_cast<float>(x), static_cast<float>(y), width * scale, height * scale};
     // Subtract in double precision before raylib performs the same steps in floats.
     double reachX = std::max(std::abs(static_cast<double>(origin.x)),
                              std::abs(static_cast<double>(destination.width) - origin.x));
@@ -62,9 +69,16 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                              std::abs(static_cast<double>(destination.height) - origin.y));
     if (std::hypot(reachX, reachY) > std::numeric_limits<float>::max())
         r.fail("texture origin and dimensions must fit finite raylib coordinates");
-    // Only reverse UV traversal, after checking positive source/destination sizes.
+    int sourceY = sy, sourceHeight = height;
+    if (rerouted) {
+        // Traverse v bottom-up so logical crops display upright.
+        sourceY = texture.height - sy - height;
+        if (!flipY) sourceHeight = -height;
+    } else if (flipY) sourceHeight = -height;
+    Rectangle source{static_cast<float>(sx), static_cast<float>(sourceY),
+                     static_cast<float>(width), static_cast<float>(sourceHeight)};
+    // Only reverse UV traversal horizontally, after checking positive sizes.
     if (flipX) source.width = -source.width;
-    if (flipY) source.height = -source.height;
     return [=] { DrawTexturePro(texture, source, destination, origin, rotation, tint); };
 }
 

@@ -1,5 +1,6 @@
 #include "assets.hh"
 #include "reader.hh"
+#include "render_texture.hh"
 
 #include <set>
 
@@ -9,7 +10,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
 {
     if (!value) return {};
     Reader r(state, pos);
-    r.fields(*value, {"textures", "fonts"});
+    r.fields(*value, {"textures", "fonts", "renderTextures"});
     auto path = [&](Value & entry) {
         state.forceValue(entry, pos);
         if (entry.type() == nString) {
@@ -71,6 +72,15 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
         } else font.path = path(entry);
         specs.fonts.emplace(std::move(name), std::move(font));
     });
+    entries("renderTextures", [&](std::string name, Value & entry) {
+        r.fields(entry, {"width", "height"});
+        TextureSize size{r.integer(r.required(entry, "width"), "width", 1, 16384),
+                         r.integer(r.required(entry, "height"), "height", 1, 16384)};
+        specs.renderTextures.emplace(std::move(name), size);
+    });
+    // The texture command resolves both groups in one namespace.
+    for (const auto & [name, size] : specs.renderTextures)
+        if (specs.textures.count(name)) r.fail("asset name '" + name + "' is declared more than once");
     return specs;
 }
 
@@ -86,6 +96,12 @@ void Assets::FontDeleter::operator()(Font * font) const
     if (font->texture.id != GetFontDefault().texture.id &&
         (font->texture.id || font->glyphs || font->recs)) UnloadFont(*font);
     delete font;
+}
+
+void Assets::RenderTextureDeleter::operator()(RenderTexture2D * target) const
+{
+    if (target->id) UnloadRenderTexture(*target);
+    delete target;
 }
 
 Assets::Assets(const AssetSpecs & specs, const Reader & r)
@@ -109,6 +125,14 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
             r.fail("could not load font '" + name + "' from '" + spec.path + "'");
         fonts.emplace(name, std::move(font));
     }
+    for (const auto & [name, spec] : specs.renderTextures) {
+        std::unique_ptr<RenderTexture2D, RenderTextureDeleter> target(new RenderTexture2D{});
+        *target = LoadRenderTexture(spec.width, spec.height);
+        if (!IsRenderTextureValid(*target)) r.fail("could not create render texture '" + name + "'");
+        // Framebuffer contents start undefined; stamps must never read stale pixels.
+        initializeRenderTexture(*target);
+        renderTextures.emplace(name, std::move(target));
+    }
 }
 
 const Texture2D * Assets::texture(const std::string & name) const
@@ -121,6 +145,12 @@ const Font * Assets::font(const std::string & name) const
 {
     auto found = fonts.find(name);
     return found == fonts.end() ? nullptr : found->second.get();
+}
+
+const RenderTexture2D * Assets::renderTexture(const std::string & name) const
+{
+    auto found = renderTextures.find(name);
+    return found == renderTextures.end() ? nullptr : found->second.get();
 }
 
 } // namespace nixray

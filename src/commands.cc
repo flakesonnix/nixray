@@ -6,6 +6,7 @@
 #include "shapes.hh"
 #include "clip.hh"
 #include "camera.hh"
+#include "render_texture.hh"
 
 #include <rlgl.h>
 #include <utility>
@@ -16,8 +17,10 @@ namespace {
 
 // Parse every command before BeginDrawing: evaluation errors cannot leave an
 // unfinished drawing batch, and command execution never re-enters the evaluator.
+// activeTexture names a render texture currently receiving output, if any.
 std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
-                                     std::optional<ClipBounds> parent, std::optional<Camera2D> activeCamera, unsigned depth)
+                                     std::optional<ClipBounds> parent, std::optional<Camera2D> activeCamera,
+                                     const std::string * activeTexture, unsigned depth)
 {
     Reader r(state, pos);
     state.forceList(value, pos, context);
@@ -30,13 +33,33 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             if (depth >= 64) r.fail("camera nesting must not exceed 64 levels");
             r.fields(*entry, {"op", "camera", "commands"});
             auto camera = cameraSpec(r, r.required(*entry, "camera"));
-            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, camera, depth + 1);
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, camera,
+                                         activeTexture, depth + 1);
             result.emplace_back(cameraCommand(camera, activeCamera, std::move(batch)));
         } else if (op == "clip") {
             if (depth >= 64) r.fail("clip nesting must not exceed 64 levels");
             auto bounds = clipBounds(r, *entry, parent);
-            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, activeCamera, depth + 1);
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, activeCamera,
+                                         activeTexture, depth + 1);
             result.emplace_back(clipCommand(bounds, parent, std::move(batch)));
+        } else if (op == "paint") {
+            if (depth >= 64) r.fail("paint nesting must not exceed 64 levels");
+            if (activeTexture) r.fail("paint must not nest inside another paint");
+            r.fields(*entry, {"op", "texture", "commands", "clear"});
+            auto name = r.string(r.required(*entry, "texture"));
+            if (name.empty()) r.fail("texture name must not be empty");
+            bool clear = r.defaultBool(*entry, "clear", true);
+            RenderTexture2D target{};
+            if (assets) {
+                if (auto * found = assets->renderTexture(name)) target = *found;
+                else if (assets->texture(name)) r.fail("texture '" + name + "' is not a render texture");
+                else r.fail("unknown render texture '" + name + "'");
+            }
+            // Paint children start a fresh texture coordinate system without
+            // inherited clip bounds, cameras or accumulated cameras.
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, std::nullopt,
+                                         std::nullopt, &name, depth + 1);
+            result.emplace_back(paintCommand(target, parent, activeCamera, clear, std::move(batch)));
         } else if (op == "clear") {
             r.fields(*entry, {"op", "color"});
             auto color = r.color(r.required(*entry, "color"));
@@ -47,7 +70,7 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
                 ClearBackground(color);
             });
         } else if (op == "texture") {
-            result.emplace_back(textureCommand(state, pos, *entry, assets));
+            result.emplace_back(textureCommand(state, pos, *entry, assets, activeTexture));
         } else if (op == "text") {
             result.emplace_back(textCommand(state, pos, *entry, assets));
         } else if (op == "triangle" || op == "triangleLines" || op == "ellipse" || op == "ellipseLines" ||
@@ -97,7 +120,7 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
 
 std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
-    return compileCommands(state, pos, value, assets, std::nullopt, std::nullopt, 0);
+    return compileCommands(state, pos, value, assets, std::nullopt, std::nullopt, nullptr, 0);
 }
 
 } // namespace nixray

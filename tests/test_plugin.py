@@ -16,6 +16,7 @@ from text_cases import TextCases
 from shape_cases import ShapeCases
 from clip_cases import ClipCases
 from camera_cases import CameraCases
+from render_cases import RenderCases
 
 
 parser = argparse.ArgumentParser()
@@ -30,7 +31,8 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
 class PluginTests(
-    AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, unittest.TestCase,
+    AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
+    unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
@@ -80,11 +82,13 @@ class PluginTests(
         expression = f'''let
           ray = {RAY};
           color = ray.colors.red;
+          assets = {{ renderTextures.scene = {{ width = 8; height = 8; }}; }};
           commands = [
             (ray.clear ray.colors.white)
             (ray.clip {{ x = 0; y = 0; width = 32; height = 32;
                         commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.camera2D {{ camera = {{}}; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
+            (ray.paint {{ texture = "scene"; commands = [ (ray.pixel {{ x = 1; y = 1; inherit color; }}) ]; }})
             (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
             (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
             (ray.rectangleLines {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
@@ -103,10 +107,10 @@ class PluginTests(
           ];
         in {{
           validated = ray.validate commands;
-          rendered = ray.run {CONFIG} (frame: {{ inherit commands; state = frame.frame; }});
+          rendered = ray.run ({CONFIG} // {{ inherit assets; }}) (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 17, "rendered": {"frames": 3, "state": 2},
+            "validated": 18, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

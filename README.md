@@ -117,7 +117,7 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `hidden` | `false` | Hidden window, useful for headless tests |
 | `resizable` | `false` | Allow window resizing |
 | `state` | `null` | Initial application state |
-| `assets` | `{}` | Named `textures` and `fonts` maps; see below |
+| `assets` | `{}` | Named `textures`, `fonts` and `renderTextures` maps; see below |
 
 The callback receives a fresh attribute set each frame:
 
@@ -176,6 +176,7 @@ nonnegative integers or floats, as do ellipse radii.
 | `clear` | `color` |
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `camera2D` | `camera`, `commands` |
+| `paint` | `texture` (render texture name), `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
@@ -332,6 +333,58 @@ children are validated before drawing and share the 64-scope nesting limit.
 Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
 arrows rotate, and a world-space marker follows the mouse beneath a fixed HUD.
 
+### Render textures
+
+`paint` redirects its child commands into a named render texture declared in the
+window config; the texture command then stamps that GPU texture like any loaded
+image:
+
+```nix
+ray.run {
+  assets.renderTextures.panel = { width = 96; height = 64; };
+} (_: {
+  commands = [
+    (ray.paint {
+      texture = "panel";
+      commands = [
+        (ray.rectangle { x = 0; y = 0; width = 96; height = 64; color = ray.colors.skyblue; })
+        (ray.rectangle { x = 4; y = 4; width = 40; height = 20; color = ray.colors.purple; })
+      ];
+    })
+    (ray.texture { texture = "panel"; x = 240; y = 24; scale = 3.0; })
+    (ray.texture { texture = "panel"; x = 240; y = 240; scale = 3.0; flipX = true; })
+  ];
+})
+```
+
+Declare `assets.renderTextures.<name> = { width; height; }` with integer
+dimensions in `1..16384`. Render textures are allocated once per window, before
+the first callback, and start fully transparent so stamps only show painted
+content. GPU resources are released with the other assets before the window
+closes.
+
+`paint` requires `texture` (a declared render texture name) and `commands`;
+`clear` is an optional boolean, defaulting to `true`, which replaces previous
+contents with transparent black before the children draw. Set `clear = false`
+to accumulate across paints and frames. Children start a fresh coordinate
+system with `(0, 0)` at the texture's top-left: enclosing clips and cameras do
+not apply inside, and paint children may freely use `clip`, `camera2D`, shapes,
+text and `texture` stamps. Painting may not nest inside another paint, and a
+`texture` command may not stamp the texture being painted; alternating two
+textures covers ping-pong effects.
+
+When a paint appears inside a window clip, the scissor pauses for the target
+drawing and resumes for following commands, while an enclosing camera transform
+is restored after the paint. Stamp attributes work as for loaded images
+(`tint`, `scale`, `rotation`, `source`, `origin`, `flipX`/`flipY`), and crop
+rectangles address the last painted image in image pixels. Paint children are
+validated before drawing, share the 64-scope nesting limit with clips and
+cameras, and pure validation recurses into them without opening a window; render
+texture names resolve only when running with loaded assets.
+
+Try `nix run . -- examples/render.nix`: one square accumulates per frame into a
+diagonal mural, stamped twice side by side with horizontal mirroring.
+
 ### Textures and fonts
 
 Declare assets in the window config and refer to them by name in commands:
@@ -361,7 +414,9 @@ sources can be copied to the store. Use that flag yourself when invoking
 `nix-instantiate --eval` directly with such paths.
 
 Assets load once, before the first callback. Unknown names and failed loads are
-errors. Native resources are released before the window closes, including on
+errors. Render textures follow the same lifecycle and are initialized to
+transparent black instead of loading file contents. Native resources are
+released before the window closes, including on
 callback exceptions or partial loading failures. `raylibValidate` checks command
 structure only: it does not load assets or verify that names are declared.
 
@@ -498,7 +553,9 @@ camera/clip combinations, nested clipping, scissor restoration across frames, cl
 clears, extreme clip bounds, shape fills/outlines, both triangle windings, degenerate shapes,
 command order, Unicode glyph selection, measured
 text placement, custom fonts, texture orientation,
-scaling, crops, rotations, tint, and alpha blending. RGB comparisons are exact,
+scaling, crops, rotations, tint, and alpha blending, plus render texture
+painting, stamp orientation/mirroring, crop and scaling, cross-frame persistence,
+incremental painting, clips/cameras inside targets, and transparent initialization. RGB comparisons are exact,
 except for a one-step quantization tolerance in the alpha-blending check.
 Input tests preload a separate polling-state fixture for release edges, wheel
 axes, UTF-8 queues and snapshot lifetime checks. They do not require physical

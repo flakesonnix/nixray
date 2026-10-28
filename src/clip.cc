@@ -8,17 +8,21 @@ namespace nixray {
 
 namespace {
 
+// nullopt while the window receives output; a paint scope sets its target size.
+std::optional<SurfaceSize> surface;
+
 struct ScissorRectangle {
     int x, y, width, height;
 };
 
 ScissorRectangle windowBounds(ClipBounds bounds)
 {
-    int64_t width = std::max(GetScreenWidth(), 0), height = std::max(GetScreenHeight(), 0);
-    auto left = std::clamp(bounds.left, int64_t{0}, width);
-    auto top = std::clamp(bounds.top, int64_t{0}, height);
-    auto right = std::clamp(bounds.right, left, width);
-    auto bottom = std::clamp(bounds.bottom, top, height);
+    auto surfaceWidth = surface ? surface->width : std::max<int64_t>(GetScreenWidth(), 0);
+    auto surfaceHeight = surface ? surface->height : std::max<int64_t>(GetScreenHeight(), 0);
+    auto left = std::clamp(bounds.left, int64_t{0}, surfaceWidth);
+    auto top = std::clamp(bounds.top, int64_t{0}, surfaceHeight);
+    auto right = std::clamp(bounds.right, left, surfaceWidth);
+    auto bottom = std::clamp(bounds.bottom, top, surfaceHeight);
     // In particular, y + height now fits int in raylib's coordinate conversion.
     return {static_cast<int>(left), static_cast<int>(top),
             static_cast<int>(right - left), static_cast<int>(bottom - top)};
@@ -70,6 +74,27 @@ Command clipCommand(ClipBounds bounds, std::optional<ClipBounds> parent, std::ve
         ClipScope scope(rectangle, parent);
         for (const auto & command : batch) command();
     };
+}
+
+void pauseWindowClip()
+{
+    EndScissorMode();
+}
+
+void resumeWindowClip(const std::optional<ClipBounds> & parent)
+{
+    if (parent) beginClip(windowBounds(*parent));
+}
+
+SurfaceGuard::SurfaceGuard(int64_t width, int64_t height)
+{
+    surface = SurfaceSize{width, height};
+}
+
+SurfaceGuard::~SurfaceGuard()
+{
+    // Paint scopes never nest, so discarding beats restoring the previous value.
+    surface = std::nullopt;
 }
 
 } // namespace nixray
