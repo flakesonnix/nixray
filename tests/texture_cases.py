@@ -161,7 +161,9 @@ class TextureCases:
 
     def test_sprite_example_wraps(self):
         example = Path(__file__).resolve().parent.parent / "examples/sprites.nix"
-        self.assertEqual(self.evaluate(f'''import {example} {{
-          image = {self.texture_path}; frameWidth = 1; frameHeight = 1; columns = 2;
-          hidden = true; maxFrames = 3;
-        }}'''), {"frames": 3, "state": 0})
+        for frames in (3, 5):
+            with self.subTest(frames=frames):
+                self.assertEqual(self.evaluate(f'''import {example} {{
+                  image = {self.texture_path}; frameWidth = 1; frameHeight = 1; columns = 2;
+                  hidden = true; maxFrames = {frames};
+                }}'''), {"frames": frames, "state": 0})

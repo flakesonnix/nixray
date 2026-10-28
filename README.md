@@ -260,11 +260,14 @@ ray.texture {
   texture = "sheet"; x = 280; y = 120;
   source = { x = 32; y = 0; width = 32; height = 32; };
   scale = 4.0; rotation = 30.0;
+  origin = { x = 64; y = 64; };
+  flipX = true;
 }
 ```
 
 Declare `assets.textures.sheet` as usual. `examples/sprites.nix` cycles through
-the first row of a sprite sheet while rotating it, at 12 frames per second.
+the first row of a sprite sheet while rotating around its center, at 12 frames
+per second. Each pass alternates horizontal mirroring without moving the pivot.
 For an atlas containing four horizontal 32x32 frames:
 
 ```sh

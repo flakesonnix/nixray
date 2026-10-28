@@ -104,14 +104,16 @@ class PixelCases:
         self.assert_pixel(pixels, 6, 10, (255, 255, 0))
         self.assert_pixel(pixels, 8, 12, (0, 0, 0))
 
-    def test_texture_center_origin_pixels(self):
-        pixels = self._texture_pixels("scale = 2; origin = { x = 2; y = 2; };")
-        for x, y, color in (
-            (8, 8, (255, 0, 0)), (10, 8, (0, 255, 0)),
-            (8, 10, (0, 0, 255)), (10, 10, (255, 255, 0)),
-            (7, 8, (0, 0, 0)), (12, 8, (0, 0, 0)),
-        ):
-            self.assert_pixel(pixels, x, y, color)
+    def test_texture_origin_offset_pixels(self):
+        for origin in ("2", "1.75"):
+            with self.subTest(origin=origin):
+                pixels = self._texture_pixels(f"scale = 2; origin = {{ x = {origin}; y = {origin}; }};")
+                for x, y, color in (
+                    (8, 8, (255, 0, 0)), (10, 8, (0, 255, 0)),
+                    (8, 10, (0, 0, 255)), (10, 10, (255, 255, 0)),
+                    (7, 8, (0, 0, 0)), (12, 8, (0, 0, 0)),
+                ):
+                    self.assert_pixel(pixels, x, y, color)
 
     def test_texture_center_rotation_pixels(self):
         pixels = self._texture_pixels("scale = 2; rotation = 90; origin = { x = 2; y = 2; };")
@@ -151,17 +153,21 @@ class PixelCases:
                     self.assert_pixel(pixels, x, y, color)
 
     def test_texture_mirrored_pivot_rotation_pixels(self):
-        for attributes, colors in MIRROR_CASES:
-            with self.subTest(attributes=attributes):
-                pixels = self._texture_pixels(
-                    "source = { x = 1; y = 1; width = 2; height = 2; }; "
-                    "scale = 2; rotation = 90; origin = { x = 2; y = 2; }; " + attributes,
-                    image=self.atlas_path,
-                )
-                for (x, y), color in zip([(10, 8), (10, 10), (8, 8), (8, 10)], colors):
-                    self.assert_pixel(pixels, x, y, color)
-                self.assert_pixel(pixels, 7, 8, (0, 0, 0))
-                self.assert_pixel(pixels, 12, 8, (0, 0, 0))
+        for rotation, points in (
+            (90, [(10, 8), (10, 10), (8, 8), (8, 10)]),
+            (-90, [(8, 10), (8, 8), (10, 10), (10, 8)]),
+        ):
+            for attributes, colors in MIRROR_CASES:
+                with self.subTest(rotation=rotation, attributes=attributes):
+                    pixels = self._texture_pixels(
+                        "source = { x = 1; y = 1; width = 2; height = 2; }; "
+                        f"scale = 2; rotation = {rotation}; origin = {{ x = 2; y = 2; }}; " + attributes,
+                        image=self.atlas_path,
+                    )
+                    for (x, y), color in zip(points, colors):
+                        self.assert_pixel(pixels, x, y, color)
+                    self.assert_pixel(pixels, 7, 8, (0, 0, 0))
+                    self.assert_pixel(pixels, 12, 8, (0, 0, 0))
 
     def test_texture_false_flip_compatibility(self):
         attributes = "scale = 2; rotation = 90; origin = { x = 2; y = 2; };"
