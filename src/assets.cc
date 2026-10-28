@@ -10,7 +10,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
 {
     if (!value) return {};
     Reader r(state, pos);
-    r.fields(*value, {"textures", "fonts", "renderTextures"});
+    r.fields(*value, {"textures", "fonts", "renderTextures", "shaders"});
     auto path = [&](Value & entry) {
         state.forceValue(entry, pos);
         if (entry.type() == nString) {
@@ -81,6 +81,11 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
     // The texture command resolves both groups in one namespace.
     for (const auto & [name, size] : specs.renderTextures)
         if (specs.textures.count(name)) r.fail("asset name '" + name + "' is declared more than once");
+    entries("shaders", [&](std::string name, Value & entry) {
+        r.fields(entry, {"fragment", "uniforms"});
+        ShaderSpec spec{path(r.required(entry, "fragment")), uniformSpecs(state, pos, r.optional(entry, "uniforms"))};
+        specs.shaders.emplace(std::move(name), std::move(spec));
+    });
     return specs;
 }
 
@@ -133,6 +138,8 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
         initializeRenderTexture(*target);
         renderTextures.emplace(name, std::move(target));
     }
+    for (const auto & [name, spec] : specs.shaders)
+        shaders.emplace(name, loadShaderAsset(spec, name, r));
 }
 
 const Texture2D * Assets::texture(const std::string & name) const
@@ -151,6 +158,12 @@ const RenderTexture2D * Assets::renderTexture(const std::string & name) const
 {
     auto found = renderTextures.find(name);
     return found == renderTextures.end() ? nullptr : found->second.get();
+}
+
+const ShaderAsset * Assets::shader(const std::string & name) const
+{
+    auto found = shaders.find(name);
+    return found == shaders.end() ? nullptr : found->second.get();
 }
 
 } // namespace nixray

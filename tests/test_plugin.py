@@ -19,6 +19,7 @@ from camera_cases import CameraCases
 from render_cases import RenderCases
 from collision_cases import CollisionCases
 from blend_cases import BlendCases
+from shader_cases import ShaderCases
 
 
 parser = argparse.ArgumentParser()
@@ -34,7 +35,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
-    CollisionCases, BlendCases, unittest.TestCase,
+    CollisionCases, BlendCases, ShaderCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
@@ -84,13 +85,20 @@ class PluginTests(
         expression = f'''let
           ray = {RAY};
           color = ray.colors.red;
-          assets = {{ renderTextures.scene = {{ width = 8; height = 8; }}; }};
+          assets = {{
+            renderTextures.scene = {{ width = 8; height = 8; }};
+            shaders.fx = {{ fragment = {ROOT / 'examples/shaders/tint.fs'}; uniforms = {{
+              gain = {{ type = "float"; value = 1; }};
+              tint = {{ type = "vec3"; value = [1 1 1]; }};
+            }}; }};
+          }};
           commands = [
             (ray.clear ray.colors.white)
             (ray.clip {{ x = 0; y = 0; width = 32; height = 32;
                         commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.camera2D {{ camera = {{}}; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.blend {{ mode = "additive"; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
+            (ray.shader {{ shader = "fx"; commands = [ (ray.pixel {{ x = 3; y = 4; inherit color; }}) ]; }})
             (ray.paint {{ texture = "scene"; commands = [ (ray.pixel {{ x = 1; y = 1; inherit color; }}) ]; }})
             (ray.text {{ text = "hello λ"; x = 1; y = 2; size = 10; inherit color; }})
             (ray.rectangle {{ x = 2; y = 2; width = 10; height = 12; inherit color; }})
@@ -113,7 +121,7 @@ class PluginTests(
           rendered = ray.run ({CONFIG} // {{ inherit assets; }}) (frame: {{ inherit commands; state = frame.frame; }});
         }}'''
         self.assertEqual(self.evaluate(expression), {
-            "validated": 19, "rendered": {"frames": 3, "state": 2},
+            "validated": 20, "rendered": {"frames": 3, "state": 2},
         })
 
     def test_empty_commands_and_default_state(self):

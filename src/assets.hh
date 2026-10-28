@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nix/expr/eval.hh>
+#include "shader.hh"
 #include <raylib.h>
 #include <map>
 #include <memory>
@@ -24,6 +25,7 @@ struct AssetSpecs {
     std::map<std::string, std::string> textures;
     std::map<std::string, FontSpec> fonts;
     std::map<std::string, TextureSize> renderTextures;
+    std::map<std::string, ShaderSpec> shaders;
 };
 
 AssetSpecs assetSpecs(nix::EvalState & state, nix::PosIdx pos, nix::Value * value);
@@ -36,6 +38,7 @@ class Assets {
     std::map<std::string, std::unique_ptr<Texture2D, TextureDeleter>> textures;
     std::map<std::string, std::unique_ptr<Font, FontDeleter>> fonts;
     std::map<std::string, std::unique_ptr<RenderTexture2D, RenderTextureDeleter>> renderTextures;
+    std::map<std::string, std::unique_ptr<ShaderAsset>> shaders;
 
 public:
     Assets(const AssetSpecs & specs, const Reader & reader);
@@ -45,6 +48,7 @@ public:
     const Texture2D * texture(const std::string & name) const;
     const Font * font(const std::string & name) const;
     const RenderTexture2D * renderTexture(const std::string & name) const;
+    const ShaderAsset * shader(const std::string & name) const;
 };
 
 } // namespace nixray

@@ -86,7 +86,8 @@ stdenv.mkDerivation {
   };
 
   nativeBuildInputs = [ cmake pkg-config makeWrapper ];
-  # libblake3, glfw and openssl satisfy pkg-config's recursive dependency checks.
+  # libblake3 and openssl satisfy pkg-config's recursive dependency checks.
+  # GLFW also provides current-context GL entry points for shader reflection.
   buildInputs = [ nixComponents.nix-expr boost libblake3 raylib glfw openssl ];
   nativeCheckInputs = [ nixComponents.nix-cli python3 xvfb-run mesa dejavu_fonts ];
   nativeInstallCheckInputs = [ python3 xvfb-run mesa ];
@@ -111,7 +112,8 @@ stdenv.mkDerivation {
     export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
     unset WAYLAND_DISPLAY
     export XDG_SESSION_TYPE=x11
-    xvfb-run -a -s '-screen 0 800x600x24' \
+    # Repeated windows must not race an X server reset after the last client exits.
+    xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_plugin.py \
         --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
         --plugin "$PWD/nixray.so" \
@@ -159,7 +161,7 @@ EOF
     direct_context=$("$out/bin/nixray" "$TMPDIR/store-context.nix" --argstr marker nixray-direct-context)
     printf '%s\n' "$direct_context"
     printf '%s\n' "$direct_context" | grep -q 'nixray asset context'
-    if ! smoke_output=$(xvfb-run -a -s '-screen 0 800x600x24' \
+    if ! smoke_output=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       "$out/bin/nixray" ../examples/hello.nix --arg hidden true --arg maxFrames 1 2>&1)
     then
       printf '%s\n' "$smoke_output" >&2
@@ -176,7 +178,7 @@ builtins.raylib {
   state = frame.state + 1;
 })
 EOF
-    if ! builtin_output=$(xvfb-run -a -s '-screen 0 800x600x24' \
+    if ! builtin_output=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       "$out/bin/nixray" "$TMPDIR/builtin.nix" 2>&1)
     then
       printf '%s\n' "$builtin_output" >&2
@@ -184,7 +186,7 @@ EOF
     fi
     printf '%s\n' "$builtin_output"
     printf '%s\n' "$builtin_output" | grep -q '"frames":2,"state":2'
-    xvfb-run -a -s '-screen 0 800x600x24' \
+    xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck
   '';

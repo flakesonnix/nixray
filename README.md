@@ -121,7 +121,7 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `hidden` | `false` | Hidden window, useful for headless tests |
 | `resizable` | `false` | Allow window resizing |
 | `state` | `null` | Initial application state |
-| `assets` | `{}` | Named `textures`, `fonts` and `renderTextures` maps; see below |
+| `assets` | `{}` | Named `textures`, `fonts`, `renderTextures` and `shaders` maps; see below |
 
 The callback receives a fresh attribute set each frame:
 
@@ -181,6 +181,7 @@ nonnegative integers or floats, as do ellipse radii.
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `camera2D` | `camera`, `commands` |
 | `blend` | `mode`, `commands` |
+| `shader` | `shader` (asset name), `commands` |
 | `paint` | `texture` (render texture name), `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
@@ -269,8 +270,8 @@ Coordinates are absolute window coordinates, not offsets from the parent clip.
 integers. Bounds are safely clamped to the window; the right and bottom edges
 are excluded. Nested clips intersect their parent's region and restore it on
 exit. Leaving the outermost clip restores unclipped drawing, including in
-subsequent frames. Clips, cameras, blends and paints share a maximum nesting depth
-of 64 scopes.
+subsequent frames. Clips, cameras, blends, shaders and paints share a maximum
+nesting depth of 64 scopes.
 
 The scope applies to shapes, text, textures and `clear`. Clears affect only the
 active region and preserve command order by flushing earlier queued geometry.
@@ -334,7 +335,7 @@ Camera transforms apply to shapes, text and textures. Clip rectangles remain in
 absolute window coordinates regardless of whether the camera or clip is outermost.
 `clear` still clears the active clip/window, not a transformed world rectangle.
 Input coordinates and `frame.measureText` remain untransformed. Scope children
-are validated before drawing; cameras, clips, blends and paints share the
+are validated before drawing; cameras, clips, blends, shaders and paints share the
 64-scope nesting limit.
 
 Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
@@ -386,7 +387,7 @@ they are drawn. This separates painting a texture from compositing it.
 
 Blend children are fully validated before drawing, including in pure validation
 and invisible clips. Unknown modes/attributes are errors. Blends share the
-64-scope nesting budget with clips, cameras and paints. `raylibValidate` counts
+64-scope nesting budget with clips, cameras, shaders and paints. `raylibValidate` counts
 only the top-level list entries, not nested child commands.
 
 Try `nix run . -- examples/blend.nix` for a four-panel comparison. The mouse
@@ -486,23 +487,103 @@ closes.
 contents with transparent black before the children draw. Set `clear = false`
 to accumulate across paints and frames. Children start a fresh coordinate
 system with `(0, 0)` at the texture's top-left: enclosing clips and cameras do
-not apply inside, and blending starts in alpha mode. Paint children may freely
-use `clip`, `camera2D`, `blend`, shapes, text and `texture` stamps.
+not apply inside, blending starts in alpha mode, and the default shader is used.
+Paint children may freely use `clip`, `camera2D`, `blend`, `shader`, shapes, text
+and `texture` stamps.
 Painting may not nest inside another paint, and a
 `texture` command may not stamp the texture being painted; alternating two
 textures covers ping-pong effects.
 
 When a paint appears inside a window clip, the scissor pauses for the target
-drawing and resumes for following commands, while enclosing camera and blend
-state is restored after the paint. Stamp attributes work as for loaded images
+drawing and resumes for following commands, while enclosing camera, blend and
+shader/uniform state is restored after the paint. Stamp attributes work as for loaded images
 (`tint`, `scale`, `rotation`, `source`, `origin`, `flipX`/`flipY`), and crop
 rectangles address the last painted image in image pixels. Paint children are
-validated before drawing, share the 64-scope nesting limit with clips, cameras
-and blends, and pure validation recurses into them without opening a window; render
+validated before drawing, share the 64-scope nesting limit with clips, cameras,
+blends and shaders, and pure validation recurses into them without opening a window; render
 texture names resolve only when running with loaded assets.
 
 Try `nix run . -- examples/render.nix`: one square accumulates per frame into a
 diagonal mural, stamped twice side by side with horizontal mirroring.
+
+### Fragment shaders
+
+Declare a fragment shader and typed uniform defaults in `assets.shaders`:
+
+```nix
+ray.run {
+  assets.shaders.fx = {
+    fragment = ./examples/shaders/tint.fs;
+    uniforms = {
+      gain = { type = "float"; value = 1.0; };
+      tint = { type = "vec3"; value = [ 1 1 1 ]; };
+    };
+  };
+} (_: {
+  commands = [
+    (ray.clear ray.colors.black)
+    (ray.shader {
+      shader = "fx";
+      uniforms = { gain = 0.5; tint = [ 1 0.6 1 ]; };
+      commands = [
+        (ray.rectangle { x = 24; y = 24; width = 120; height = 80; color = ray.colors.white; })
+      ];
+    })
+  ];
+})
+```
+
+`fragment` is required and accepts a Nix path or an absolute/context-bearing
+string, like other asset paths. The shader uses raylib's default vertex shader;
+custom vertex stages are not exposed. Programs compile/link once per window,
+before the first callback. Missing files, compile/link failures and raylib's
+silent fallback to the default program are errors. Programs and location data
+are released before the window closes, including on partial loading failures.
+This uses the existing desktop GLFW/OpenGL backend; the example is GLSL 330.
+
+The optional asset `uniforms` map declares configurable uniforms. Each entry
+requires exactly `{ type; value; }`, with a default value matching its type:
+
+| `type` | Nix value |
+| --- | --- |
+| `float` | Finite integer/float in raylib's single-precision range |
+| `int` | Signed 32-bit integer |
+| `vec2`, `vec3`, `vec4` | List of exactly 2, 3 or 4 finite numeric components |
+
+Native reflection verifies that each declared uniform is active and its GLSL
+type matches. Missing/optimized-out uniforms, arrays and mismatched types are
+errors. Uniform names must be ordinary GLSL identifiers, with no `gl_` prefix.
+Raylib-managed names such as `mvp`, `colDiffuse` and `texture0` are reserved;
+matrices, sampler overrides, booleans and uniform arrays are not exposed.
+Undeclared custom uniforms retain their GLSL initial values and cannot be
+overridden through a scope.
+
+A `shader` command requires `shader` (asset name) and `commands`; its optional
+`uniforms` map contains plain replacement values, not type/default descriptors.
+Every entry must appear in that asset's schema. Each scope starts from the
+**asset defaults**, not its parent's overrides. Nested shader scopes replace the
+active shader, then restore the parent program and its effective uniform values
+on exit, including when both scopes use the same program. Leaving the outermost
+scope restores raylib's default shader. Pending geometry is flushed before
+program or uniform changes, so sibling draws cannot pick up later values.
+
+Shaders apply to shapes, text and textures; they do not automatically capture a
+scene or change cameras/clipping. Shader output feeds the active blend mode.
+`clear` bypasses shaders and preserves list/scissor order. `paint` starts with
+the default shader, restoring its enclosing shader and uniforms afterward.
+Put a shader scope **inside** paint to affect target drawing, or wrap a later
+`texture` stamp to post-process an already-painted scene. `texture0` is bound
+automatically; `fragTexCoord`, `fragColor` and `colDiffuse` follow raylib's shader
+conventions (see `examples/shaders/tint.fs`).
+
+Shader scopes share the 64-scope budget with clips, cameras, blends and paints.
+Children are fully validated before drawing. Pure `raylibValidate` checks names,
+value shapes and finite numeric values without loading shaders; declared asset
+names, uniform schemas and GLSL types resolve only in a real window run.
+
+Try `nix run . -- examples/shader.nix`: the same render texture is stamped normally
+and through a tint/gain shader. The mouse wheel changes gain, while labels outside
+the shader scope retain their original colors.
 
 ### Textures and fonts
 
@@ -652,7 +733,8 @@ nix flake check -L
 nix develop
 cmake -S . -B build
 cmake --build build
-env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a python3 tests/test_plugin.py \
+env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+  python3 tests/test_plugin.py \
   --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
   --capture-library "$PWD/build/nixray-test-capture.so" \
   --input-library "$PWD/build/nixray-test-input.so"
@@ -660,14 +742,16 @@ env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a python3 tests/test_plugi
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev
 shell selects software Mesa and sets up `XDG_RUNTIME_DIR` so the Xvfb command
-works without a GPU. Package checks compile the real plugin and run evaluator
+works without a GPU. `-noreset` avoids X server reset races when tests close and
+immediately reopen windows. Package checks compile the real plugin and run evaluator
 tests plus actual OpenGL rendering under Xvfb; an install check also exercises
 the wrapped launcher. Tests generate tiny PNG/bitmap-font fixtures, and the dev
 shell supplies a TrueType test font. Linux x86_64 and aarch64 packages are exposed;
 only the local host architecture is tested by default. Pixel tests preload a
 test-only capture module, flush the real raylib draw batch, and inspect the back
 buffer before the buffer swap. That module is never installed with the plugin.
-Assertions cover blend equations, nested mode restoration, isolated render-target
+Assertions cover shader uniforms/reflection, same-program nested restoration,
+shader post-processing, blend equations, nested mode restoration, isolated render-target
 blending, camera transforms/restoration, pure coordinate round trips,
 pure collision queries/boundaries/overflow, camera-aware picking and geometry-driven drawing,
 camera/clip combinations, nested clipping, scissor restoration across frames, clipped

@@ -2,6 +2,7 @@
 
 #include "clip.hh"
 #include "commands.hh"
+#include "shader.hh"
 #include <raylib.h>
 #include <optional>
 
@@ -13,6 +14,6 @@ void initializeRenderTexture(RenderTexture2D target);
 
 Command paintCommand(RenderTexture2D target, const std::optional<ClipBounds> & parent,
                      const std::optional<Camera2D> & camera, BlendMode parentBlend,
-                     bool clear, std::vector<Command> batch);
+                     ShaderState parentShader, bool clear, std::vector<Command> batch);
 
 } // namespace nixray
