@@ -10,6 +10,7 @@ add_library(nixray MODULE
     src/plugin.cc
     src/commands.cc
     src/runtime.cc
+    src/input.cc
     src/assets.cc
     src/texture.cc
 )

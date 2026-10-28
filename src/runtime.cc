@@ -1,6 +1,7 @@
 #include "runtime.hh"
 #include "assets.hh"
 #include "commands.hh"
+#include "input.hh"
 #include "reader.hh"
 
 #include <nix/expr/eval-settings.hh>
@@ -38,20 +39,6 @@ struct Window {
     Window(const Window &) = delete;
     Window & operator=(const Window &) = delete;
 };
-
-Value * inputList(EvalState & state, int count, bool (*read)(int))
-{
-    std::vector<int> active;
-    for (int i = 0; i < count; ++i) if (read(i)) active.push_back(i);
-    auto list = state.buildList(active.size());
-    for (size_t i = 0; i < active.size(); ++i) {
-        list[i] = state.allocValue();
-        list[i]->mkInt(active[i]);
-    }
-    auto * value = state.allocValue();
-    value->mkList(list);
-    return value;
-}
 
 } // namespace
 
@@ -97,12 +84,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         frame.alloc("delta").mkFloat(GetFrameTime());
         frame.alloc("width").mkInt(GetScreenWidth());
         frame.alloc("height").mkInt(GetScreenHeight());
-        frame.alloc("mouseX").mkInt(GetMouseX());
-        frame.alloc("mouseY").mkInt(GetMouseY());
-        frame.insert(state.symbols.create("keysDown"), inputList(state, 349, IsKeyDown));
-        frame.insert(state.symbols.create("keysPressed"), inputList(state, 349, IsKeyPressed));
-        frame.insert(state.symbols.create("mouseDown"), inputList(state, 7, IsMouseButtonDown));
-        frame.insert(state.symbols.create("mousePressed"), inputList(state, 7, IsMouseButtonPressed));
+        addInput(state, frame);
         frame.insert(state.symbols.create("state"), *current);
         // Callbacks may retain their input inside state (including closures).
         // Never hand the evaluator a pointer to a stack-allocated Value.
