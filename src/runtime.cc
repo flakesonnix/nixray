@@ -78,7 +78,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(16);
+        auto frame = state.buildBindings(17);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());

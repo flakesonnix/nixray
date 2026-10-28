@@ -1,6 +1,7 @@
 #include "input.hh"
 
 #include <raylib.h>
+#include <string>
 #include <vector>
 
 namespace nixray {
@@ -23,6 +24,19 @@ Value * inputList(EvalState & state, int count, bool (*read)(int))
     return value;
 }
 
+std::string inputText()
+{
+    std::string text;
+    for (int codepoint; (codepoint = GetCharPressed()) != 0;) {
+        if (codepoint < 0 || codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff))
+            codepoint = 0xfffd;
+        int size = 0;
+        const char * encoded = CodepointToUTF8(codepoint, &size);
+        text.append(encoded, static_cast<size_t>(size));
+    }
+    return text;
+}
+
 } // namespace
 
 void addInput(EvalState & state, BindingsBuilder & frame)
@@ -34,6 +48,8 @@ void addInput(EvalState & state, BindingsBuilder & frame)
     auto wheel = GetMouseWheelMoveV();
     frame.alloc("mouseWheelX").mkFloat(wheel.x);
     frame.alloc("mouseWheelY").mkFloat(wheel.y);
+    // Consume the character queue now, regardless of which fields Nix later forces.
+    frame.alloc("textInput").mkString(inputText(), state.mem);
     frame.insert(state.symbols.create("keysDown"), inputList(state, keyCount, IsKeyDown));
     frame.insert(state.symbols.create("keysPressed"), inputList(state, keyCount, IsKeyPressed));
     frame.insert(state.symbols.create("keysReleased"), inputList(state, keyCount, IsKeyReleased));

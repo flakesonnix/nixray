@@ -15,9 +15,9 @@ class InputCases:
             preload += " " + os.environ["LD_PRELOAD"]
         return self.evaluate(expression, env={"LD_PRELOAD": preload})
 
-    def _input_frames(self, value):
+    def _input_frames(self, value, *, frames=4):
         return self._input_evaluate(f'''builtins.raylib {{
-          width = 32; height = 32; hidden = true; fps = 0; maxFrames = 4; state = [];
+          width = 32; height = 32; hidden = true; fps = 0; maxFrames = {frames}; state = [];
         }} (frame: {{ commands = []; state = frame.state ++ [ ({value}) ]; }})''')
 
     def test_key_release_transitions(self):
@@ -56,3 +56,27 @@ class InputCases:
                              {"x": 1.5, "y": -2.0}, {"x": 0.0, "y": 1.25},
                              {"x": -0.5, "y": 0.0}, {"x": 0.0, "y": 0.0},
                          ]})
+
+    def test_text_input_queue_utf8(self):
+        self.assertEqual(self._input_frames("frame.textInput"), {"frames": 4, "state": [
+            "Aä🙂", "λ€\n", "\ufffd" * 4, "",
+        ]})
+
+    def test_text_input_scalar_boundaries(self):
+        self.assertEqual(self._input_frames("frame.textInput", frames=6), {"frames": 6, "state": [
+            "Aä🙂", "λ€\n", "\ufffd" * 4, "",
+            "\x7f\u0080\u07ff\u0800\uffff\U00010000\U0010ffff", "",
+        ]})
+
+    def test_text_input_is_snapshot_value(self):
+        self.assertEqual(self._input_evaluate('''builtins.raylib {
+          width = 32; height = 32; hidden = true; fps = 0; maxFrames = 2;
+        } (frame: { commands = []; state =
+          if frame.frame == 0 then (_: frame.textInput) else frame.state null;
+        })'''), {"frames": 2, "state": "Aä🙂"})
+
+    def test_empty_text_input(self):
+        self.assertEqual(self.evaluate('''builtins.raylib {
+          width = 32; height = 32; hidden = true; fps = 0; maxFrames = 1;
+        } (frame: assert frame.textInput == ""; { commands = []; })'''),
+          {"frames": 1, "state": None})

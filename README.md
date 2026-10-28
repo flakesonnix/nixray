@@ -124,6 +124,7 @@ The callback receives a fresh attribute set each frame:
   width = 800; height = 450; # Current drawable dimensions
   mouseX = 0; mouseY = 0;
   mouseWheelX = 0.0; mouseWheelY = 0.0; # Per-frame wheel movement on both axes
+  textInput = "";                     # Queued committed characters as UTF-8
   keysDown = []; keysPressed = [];    # Lists of raylib integer key codes
   keysReleased = [];                 # Released during this frame
   mouseDown = []; mousePressed = []; # Lists of raylib mouse button codes
@@ -143,6 +144,12 @@ lists; down/pressed fields and their existing behavior are unchanged.
 Wheel values are signed per-frame deltas from raylib, including fractional
 movement; they are not accumulated scroll positions. Store a running total in
 application state if needed.
+
+`textInput` drains raylib's character queue once per snapshot and concatenates
+its Unicode codepoints into a UTF-8 string, even if the callback ignores the
+field. It contains this frame's queued text only; append it to your own state
+when desired. Invalid scalar values become U+FFFD. Editing keys still use the
+keyboard lists; IME pre-edit/composition state and text shaping are not exposed.
 
 ### Drawing commands
 
