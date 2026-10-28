@@ -188,6 +188,13 @@ raylib coordinates. Defaults draw the image at native size without rotation.
 `text` accepts an optional `font` asset name; omitting it preserves raylib's
 default-font behavior.
 
+`origin = { x; y; }` selects a texture's pivot offset in scaled destination
+pixels, not normalized UVs or source pixels. Both coordinates accept finite
+integers/floats, including negative offsets and pivots outside the image.
+The pivot is placed at command position `(x, y)` before rotation. For a 32x32
+source at `scale = 4`, `origin = { x = 64; y = 64; }` rotates around its center.
+The default is `{ x = 0; y = 0; }`, retaining the existing top-left anchor.
+
 For sprites/atlases, `texture` accepts `source = { x; y; width; height; }` in
 image pixels. Offsets must be nonnegative integers and dimensions positive
 integers. The rectangle must fit the loaded texture; cropping happens before

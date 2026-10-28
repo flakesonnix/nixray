@@ -2,6 +2,7 @@
 #include "assets.hh"
 #include "reader.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -11,7 +12,7 @@ namespace nixray {
 Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
     Reader r(state, pos);
-    r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source"});
+    r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source", "origin"});
     auto name = r.string(r.required(value, "texture"));
     if (name.empty()) r.fail("texture name must not be empty");
     int x = r.integerAttr(value, "x"), y = r.integerAttr(value, "y");
@@ -22,6 +23,12 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
     if (scale == 0) r.fail("scale must be positive");
     auto * rotationValue = r.optional(value, "rotation");
     float rotation = rotationValue ? r.number(*rotationValue, "rotation") : 0.0f;
+    Vector2 origin{};
+    if (auto * originValue = r.optional(value, "origin")) {
+        r.fields(*originValue, {"x", "y"});
+        origin.x = r.number(r.required(*originValue, "x"), "origin.x");
+        origin.y = r.number(r.required(*originValue, "y"), "origin.y");
+    }
     Texture2D texture{};
     if (assets) {
         auto * found = assets->texture(name);
@@ -46,7 +53,14 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                    static_cast<double>(source.height) * scale) > std::numeric_limits<float>::max())
         r.fail("scaled texture dimensions must fit finite raylib coordinates");
     Rectangle destination{static_cast<float>(x), static_cast<float>(y), source.width * scale, source.height * scale};
-    return [=] { DrawTexturePro(texture, source, destination, {0, 0}, rotation, tint); };
+    // Subtract in double precision before raylib performs the same steps in floats.
+    double reachX = std::max(std::abs(static_cast<double>(origin.x)),
+                             std::abs(static_cast<double>(destination.width) - origin.x));
+    double reachY = std::max(std::abs(static_cast<double>(origin.y)),
+                             std::abs(static_cast<double>(destination.height) - origin.y));
+    if (std::hypot(reachX, reachY) > std::numeric_limits<float>::max())
+        r.fail("texture origin and dimensions must fit finite raylib coordinates");
+    return [=] { DrawTexturePro(texture, source, destination, origin, rotation, tint); };
 }
 
 } // namespace nixray

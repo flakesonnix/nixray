@@ -45,6 +45,44 @@ class TextureCases:
           commands = [ {{ op = "texture"; texture = "logo"; x = 0; y = 0; scale = 3.0e38; }} ];
         }})''', error="scaled texture dimensions")
 
+    def test_texture_origins(self):
+        for attributes in (
+            "origin = { x = 0; y = 0; };",
+            "origin = { x = 1.25; y = 0.25; }; scale = 2; rotation = 30;",
+            "origin = { x = -2; y = -3.5; }; rotation = -90;",
+            "origin = { x = 10; y = 20; };",
+        ):
+            with self.subTest(attributes=attributes):
+                self.assertEqual(self._draw_texture(attributes), {"frames": 2, "state": None})
+
+    def test_texture_origin_validation(self):
+        self.assertEqual(self.evaluate('''builtins.raylibValidate [
+          { op = "texture"; texture = "unloaded"; x = 0; y = 0;
+            origin = { x = -1.5; y = 2; }; rotation = 90; }
+        ]''', flags=["--pure-eval"], env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 1)
+
+    def test_bad_texture_origins(self):
+        for origin, error in [
+            ("[]", "expected a set"),
+            ("{}", "missing attribute 'x'"),
+            ("{ x = 0; }", "missing attribute 'y'"),
+            ("{ x = true; y = 0; }", "expected"),
+            ("{ x = 1.0e100; y = 0; }", "finite number in range"),
+            ("{ x = 0; y = 0; typo = true; }", "unknown attribute 'typo'"),
+        ]:
+            with self.subTest(origin=origin):
+                self.evaluate(f'''builtins.raylibValidate [
+                  {{ op = "texture"; texture = "logo"; x = 0; y = 0; origin = {origin}; }}
+                ]''', error=error)
+
+    def test_texture_origin_overflow(self):
+        self.evaluate('''builtins.raylibValidate [
+          { op = "texture"; texture = "unloaded"; x = 0; y = 0;
+            origin = { x = 3.0e38; y = 3.0e38; }; }
+        ]''', error="texture origin and dimensions")
+        self._draw_texture("origin = { x = -3.0e38; y = 0; }; scale = 1.0e38;",
+                           error="texture origin and dimensions")
+
     def test_texture_source(self):
         for attributes in (
             "source = { x = 0; y = 0; width = 2; height = 2; };",
