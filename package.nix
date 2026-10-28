@@ -28,14 +28,24 @@ let
 
     nix="''${NIXRAY_NIX:?NIXRAY_NIX is not set}"
     plugin="''${NIXRAY_PLUGIN:?NIXRAY_PLUGIN is not set}"
-    mesa="''${NIXRAY_MESA:?NIXRAY_MESA is not set}"
 
-    # Use the packaged Mesa stack. Mixing a Nix glvnd/GLFW with a system
-    # graphics-driver store can leave EGL without a usable vendor/display.
-    export LD_LIBRARY_PATH="$mesa/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export LIBGL_DRIVERS_PATH="$mesa/lib/dri"
-    export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa/share/glvnd/egl_vendor.d/50_mesa.json"
-    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    case "''${NIXRAY_GRAPHICS:-mesa}" in
+      mesa)
+        # Keep the compatible packaged stack as the default.
+        mesa="''${NIXRAY_MESA:?NIXRAY_MESA is not set}"
+        export LD_LIBRARY_PATH="$mesa/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LIBGL_DRIVERS_PATH="$mesa/lib/dri"
+        export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa/share/glvnd/egl_vendor.d/50_mesa.json"
+        export __GLX_VENDOR_LIBRARY_NAME=mesa
+        ;;
+      system)
+        # Leave all inherited graphics settings, including NVIDIA/PRIME, alone.
+        ;;
+      *)
+        echo "nixray: NIXRAY_GRAPHICS must be 'mesa' or 'system'" >&2
+        exit 2
+        ;;
+    esac
 
     file=$1
     shift

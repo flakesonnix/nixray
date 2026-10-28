@@ -28,9 +28,37 @@ the exact Nix build used to compile its plugin (Nix 2.34 from the locked nixpkgs
 Do not load the `.so` into an arbitrary system Nix. To select another compatible
 2.34 build, override `nixComponents` in `package.nix` and rebuild both together.
 
-The launcher also selects the packaged Mesa EGL/GLX vendor and DRI paths. This
-avoids a runtime mismatch between the plugin's Nix closure and a separately
-versioned system graphics-driver store.
+### Graphics drivers
+
+`NIXRAY_GRAPHICS` selects the launcher's graphics environment:
+
+| Value | Behavior |
+| --- | --- |
+| `mesa` (default, also when empty) | Select packaged Mesa EGL/GLX and DRI paths; prepend its library path while retaining the caller's suffix |
+| `system` | Leave all inherited graphics variables untouched; use your system's driver setup |
+
+The default avoids mixing the plugin's Nix closure with a separately versioned
+graphics-driver store. To use your system's drivers instead:
+
+```sh
+NIXRAY_GRAPHICS=system nix run . -- examples/hello.nix
+```
+
+For an already configured NVIDIA PRIME setup using X11/GLX, for example:
+
+```sh
+NIXRAY_GRAPHICS=system __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
+  nix run . -- examples/hello.nix
+```
+
+System mode preserves `LD_LIBRARY_PATH`, EGL/GLX vendor selections, DRI paths,
+and NVIDIA/PRIME settings; it does not install drivers, repair ABI mismatches,
+or silently fall back to Mesa. Invalid mode names fail before evaluating Nix.
+On non-NixOS systems, a suitable graphics wrapper may still be required.
+
+`nix develop` intentionally exports software-Mesa settings for headless tests.
+System mode preserves those too: use a fresh desktop shell to test real system
+drivers, rather than expecting it to undo the development shell's environment.
 
 ## API
 
