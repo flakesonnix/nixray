@@ -4,6 +4,7 @@
 #include "input.hh"
 #include "reader.hh"
 #include "text.hh"
+#include "audio.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
@@ -48,13 +49,14 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     Reader r(state, pos);
     if (state.settings.pureEval || state.settings.restrictEval)
         r.fail("builtins.raylib requires impure, unrestricted evaluation");
-    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "state", "assets"});
+    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "audio", "state", "assets"});
     int width = r.defaultInt(*args[0], "width", 800, 1);
     int height = r.defaultInt(*args[0], "height", 450, 1);
     int fps = r.defaultInt(*args[0], "fps", 60);
     int maxFrames = r.defaultInt(*args[0], "maxFrames", 0);
     bool hidden = r.defaultBool(*args[0], "hidden", false);
     bool resizable = r.defaultBool(*args[0], "resizable", false);
+    bool audio = r.defaultBool(*args[0], "audio", false);
     auto * titleValue = r.optional(*args[0], "title");
     auto title = titleValue ? r.string(*titleValue) : "nixray";
     state.forceFunction(*args[1], pos, context);
@@ -67,12 +69,15 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         r.fail("builtins.raylib requires a graphical session (DISPLAY or WAYLAND_DISPLAY)");
 
     auto specs = assetSpecs(state, pos, r.optional(*args[0], "assets"));
+    if (!audio && (!specs.sounds.empty() || !specs.music.empty()))
+        r.fail("audio assets require config.audio = true");
     auto * initial = r.optional(*args[0], "state");
     auto current = allocRootValue(initial ? initial : &Value::vNull);
     state.forceValueDeep(**current);
     Window window(width, height, title, hidden, resizable);
     if (!IsWindowReady()) r.fail("could not initialize a raylib window; check DISPLAY and OpenGL support");
-    // This object (including partially loaded assets) is destroyed before Window.
+    AudioDevice device(audio, r);
+    // Assets (including partial loads) are destroyed before device and Window.
     Assets assets(specs, r);
     auto measureText = allocRootValue(textMeasurer(state, assets, specs));
     SetTargetFPS(fps);
@@ -80,13 +85,14 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(18);
+        auto frame = state.buildBindings(19);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());
         frame.alloc("width").mkInt(GetScreenWidth());
         frame.alloc("height").mkInt(GetScreenHeight());
         addInput(state, frame);
+        audioSnapshot(state, audio, assets, frame.alloc("audio"));
         frame.insert(state.symbols.create("state"), *current);
         frame.insert(state.symbols.create("measureText"), *measureText);
         // Callbacks may retain their input inside state (including closures).
@@ -95,8 +101,13 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         (**input).mkAttrs(frame);
         auto output = allocRootValue(state.allocValue());
         state.callFunction(*args[1], **input, **output, pos);
-        r.fields(**output, {"commands", "state", "close"});
+        r.fields(**output, {"commands", "audio", "state", "close"});
         auto batch = commands(state, pos, r.required(**output, "commands"), &assets);
+        std::vector<Command> effects;
+        if (auto * actions = r.optional(**output, "audio")) {
+            effects = audioCommands(state, pos, *actions, audio ? &assets : nullptr);
+            if (!audio && !effects.empty()) r.fail("audio actions require config.audio = true");
+        }
         bool close = r.defaultBool(**output, "close", false);
         if (auto * next = r.optional(**output, "state")) {
             // Force state at the frame boundary, avoiding a chain of numeric
@@ -105,6 +116,9 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
             state.forceValueDeep(**nextRoot);
             current = std::move(nextRoot);
         }
+        // Finish all evaluation/validation before changing playback or drawing.
+        for (const auto & action : effects) action();
+        assets.updateMusic();
         BeginDrawing();
         for (auto & command : batch) command();
         EndDrawing();

@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <set>
 #include <vector>
 
 namespace nixray {
@@ -21,24 +22,37 @@ struct FontSpec {
 
 struct TextureSize { int width, height; };
 
+struct MusicSpec {
+    std::string path;
+    bool looping = true;
+};
+
 struct AssetSpecs {
     std::map<std::string, std::string> textures;
     std::map<std::string, FontSpec> fonts;
     std::map<std::string, TextureSize> renderTextures;
     std::map<std::string, ShaderSpec> shaders;
+    std::map<std::string, std::string> sounds;
+    std::map<std::string, MusicSpec> music;
 };
 
 AssetSpecs assetSpecs(nix::EvalState & state, nix::PosIdx pos, nix::Value * value);
 
-// Own GPU resources, never evaluator Values. The window must outlive this object.
+// Own native resources, never evaluator Values. Window/audio device outlive this.
 class Assets {
     struct TextureDeleter { void operator()(Texture2D * texture) const; };
     struct FontDeleter { void operator()(Font * font) const; };
     struct RenderTextureDeleter { void operator()(RenderTexture2D * target) const; };
+    struct SoundDeleter { void operator()(Sound * sound) const; };
+    struct MusicDeleter { void operator()(Music * music) const; };
     std::map<std::string, std::unique_ptr<Texture2D, TextureDeleter>> textures;
     std::map<std::string, std::unique_ptr<Font, FontDeleter>> fonts;
     std::map<std::string, std::unique_ptr<RenderTexture2D, RenderTextureDeleter>> renderTextures;
     std::map<std::string, std::unique_ptr<ShaderAsset>> shaders;
+    std::map<std::string, std::unique_ptr<Sound, SoundDeleter>> sounds;
+    std::map<std::string, std::unique_ptr<Music, MusicDeleter>> musicTracks;
+    std::set<std::string> seekableMusic;
+    std::vector<std::string> soundLabels, musicLabels;
 
 public:
     Assets(const AssetSpecs & specs, const Reader & reader);
@@ -49,6 +63,12 @@ public:
     const Font * font(const std::string & name) const;
     const RenderTexture2D * renderTexture(const std::string & name) const;
     const ShaderAsset * shader(const std::string & name) const;
+    const Sound * sound(const std::string & name) const;
+    const Music * music(const std::string & name) const;
+    bool musicCanSeek(const std::string & name) const;
+    const std::vector<std::string> & soundNames() const { return soundLabels; }
+    const std::vector<std::string> & musicNames() const { return musicLabels; }
+    void updateMusic() const;
 };
 
 } // namespace nixray

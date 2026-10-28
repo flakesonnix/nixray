@@ -69,6 +69,8 @@ Loading the plugin registers:
 - `builtins.raylibValidate commands`: recursively validate commands without a
   display; return the top-level list length (each drawing scope counts as one command).
   Also usable during pure evaluation.
+- `builtins.raylibValidateAudio actions`: validate a flat audio action list and
+  return its length. Pure; no window, device or asset loading.
 - `builtins.raylibVersion`: linked raylib version string.
 - `builtins.raylibWorldToScreen2D camera point` and
   `builtins.raylibScreenToWorld2D camera point`: pure coordinate conversions;
@@ -120,8 +122,9 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `maxFrames` | `0` | Stop after this many rendered frames; `0` means unlimited |
 | `hidden` | `false` | Hidden window, useful for headless tests |
 | `resizable` | `false` | Allow window resizing |
+| `audio` | `false` | Opt in to an audio device, sound effects and streamed music |
 | `state` | `null` | Initial application state |
-| `assets` | `{}` | Named `textures`, `fonts`, `renderTextures` and `shaders` maps; see below |
+| `assets` | `{}` | Named `textures`, `fonts`, `renderTextures`, `shaders`, `sounds` and `music` maps |
 
 The callback receives a fresh attribute set each frame:
 
@@ -137,13 +140,15 @@ The callback receives a fresh attribute set each frame:
   keysReleased = [];                 # Released during this frame
   mouseDown = []; mousePressed = []; # Lists of raylib mouse button codes
   mouseReleased = [];
+  audio = { enabled = false; sounds = {}; music = {}; }; # Playback snapshot
   state = null;                     # Previous frame's application state
 }
 ```
 
-It returns `{ commands = [ ... ]; state = nextState; close = false; }`.
+It returns `{ commands = [ ... ]; audio = [ ... ]; state = nextState; close = false; }`.
 Only `commands` is required. Omitted `state` preserves the previous state.
-`close = true` exits **after** drawing that frame. The native loop returns
+Omitted `audio` means no playback actions. `close = true` exits **after** processing
+audio and drawing that frame. The native loop returns
 `{ frames = totalRenderedFrames; state = finalState; }`.
 
 The frame also contains `measureText`, a native function for text layout with
@@ -706,13 +711,108 @@ nix run . -- examples/sprites.nix --arg image ./atlas.png \
   --arg frameWidth 32 --arg frameHeight 32 --arg columns 4
 ```
 
+### Audio
+
+Audio is **opt-in**: ordinary runs never initialize or probe an audio device.
+Set `audio = true` in the window config before declaring audio assets or returning
+nonempty audio action lists. `hidden = true` does not mute an enabled device.
+Playback still runs inside the existing graphical frame loop, so a display is
+required even when `commands = []`.
+
+```nix
+let ray = import ./lib;
+in ray.run {
+  audio = true;
+  assets = {
+    sounds.click = ./click.wav;
+    music.theme = { path = ./theme.ogg; looping = true; };
+  };
+} (frame: {
+  commands = [ (ray.clear ray.colors.raywhite) ];
+  audio = (if frame.frame == 0 then [
+    (ray.setMusicVolume { music = "theme"; volume = 0.5; })
+    (ray.playMusic "theme")
+  ] else []) ++ (if ray.keyPressed frame ray.keys.a then [
+    (ray.playSound "click")
+  ] else []);
+})
+```
+
+`assets.sounds.<name>` accepts a path and decodes the whole effect into memory.
+`assets.music.<name>` accepts either a path (default `looping = true`) or
+`{ path; looping ? true; }`, retaining a decoder and streaming buffers. Both use
+the same Nix paths/absolute context-bearing strings as graphics assets and load
+once per window. Available file formats follow the linked raylib build; tests
+exercise native WAV decoding for both kinds. Music frame counts above signed
+32-bit range are rejected because native playback-time queries use signed frame
+arithmetic.
+
+The callback's optional `audio` list is **separate from drawing commands**:
+
+| `op` | Required fields besides `op` |
+| --- | --- |
+| `playSound`, `pauseSound`, `resumeSound`, `stopSound` | `sound` (asset name) |
+| `setSoundVolume` | `sound`, `volume` |
+| `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic` | `music` (asset name) |
+| `setMusicVolume` | `music`, `volume` |
+| `seekMusic` | `music`, `position` (seconds) |
+
+Transport helpers take a name, e.g. `ray.pauseMusic "theme"`; volume/seek helpers
+take the field set shown above. Volume must be a finite number in `0..1`.
+Seek positions must be finite, nonnegative and no greater than track length,
+with a safe native frame conversion. Seeking is exposed for WAV/OGG/MP3/FLAC/QOA,
+not module formats; decoder/buffer precision means it is not sample-exact output
+scheduling. Unknown attributes, operations and resource names are errors.
+
+Actions execute in list order **once per submitted frame**. Emit play/seek actions
+on input edges or state transitions, not unconditionally every frame. Repeated
+`playSound` calls restart that asset's single voice; no overlapping-voice API is
+added. Use pause/resume to preserve playback, and stop/play to restart music.
+Audio actions cannot nest under camera/clip/blend/shader scopes or appear in the
+drawing list. `ray.validateAudio actions` aliases the pure audio validator; it
+checks syntax/ranges without resolving asset names or track lengths.
+
+Every frame includes an immutable `frame.audio` snapshot:
+
+```nix
+{
+  enabled = true;
+  sounds.click = { playing = false; };
+  music.theme = { playing = false; looping = true; timePlayed = 0.0; timeLength = 10.0; };
+}
+```
+
+The snapshot is captured **before this frame's actions**, and can be retained
+after resource cleanup without live native handles. `playing` is false for both
+paused and stopped assets; music times are native float seconds. With audio
+disabled, `enabled = false` and both maps are empty. Backend playback proceeds
+asynchronously; these values are not a sample-synchronized clock.
+
+Drawing actions, audio actions, `close` and the next state are all evaluated and
+validated before any of this frame's playback changes. The loop then executes
+audio actions, calls `UpdateMusicStream` once for each loaded track, and renders
+the frame. Existing playback is not frozen during evaluation, and slow callbacks
+can starve streaming audio. Sound/music resources are unloaded before the owned
+audio device closes, on normal exit, early close and exceptions. An already-active
+device is not taken over. Initialization failures are errors; raylib/miniaudio may
+also select a silent/null backend, so `enabled` does not certify audible output.
+
+Try your own files with:
+
+```sh
+nix run . -- examples/audio.nix --arg sound ./click.wav --arg music ./theme.ogg
+```
+
+A plays a sound effect, Enter pauses/resumes music, and the wheel changes volume.
+
 ## Evaluation semantics and safety
 
 Nix is lazy and memoizes expressions. Independent side-effecting builtins for
 `BeginDrawing` and `EndDrawing` would therefore be easy to skip, reorder, or run
 only once. Instead, the plugin owns an iterative C++ loop, calls a Nix function
-with a fresh snapshot, fully validates each batch, then draws it in order.
-It closes the window on normal exit and evaluator exceptions, and checks for
+with a fresh snapshot, fully validates drawing/audio batches and state, then
+applies audio actions and draws in order. It closes owned devices and the window
+on normal exit and evaluator exceptions, and checks for
 Nix interrupts every frame. Nested windows are rejected.
 
 State is deeply evaluated each frame to avoid accumulating a chain of unevaluated
@@ -737,7 +837,8 @@ env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 800x600x24
   python3 tests/test_plugin.py \
   --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
   --capture-library "$PWD/build/nixray-test-capture.so" \
-  --input-library "$PWD/build/nixray-test-input.so"
+  --input-library "$PWD/build/nixray-test-input.so" \
+  --audio-library "$PWD/build/nixray-test-audio.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev
@@ -764,8 +865,12 @@ incremental painting, clips/cameras inside targets, and transparent initializati
 except for a one-step quantization tolerance in fractional blend checks.
 Input tests preload a separate polling-state fixture for release edges, wheel
 axes, UTF-8 queues and snapshot lifetime checks. They do not require physical
-devices or claim to cover OS event delivery or IME integration. Neither test
-module is installed with the plugin.
+devices or claim to cover OS event delivery or IME integration. Audio tests use
+silent WAV fixtures and isolated backend settings (silent ALSA/default-null
+fallback), with a tracing/failure-injection hook around real native decoding,
+playback and streaming. They check action ordering, playback snapshots and device/
+resource cleanup, not acoustics or physical speaker output. No test hook is
+installed with the plugin.
 
 `.github/workflows/checks.yml` runs `nix flake check` on Ubuntu 24.04 for pushes,
 pull requests, and manual runs. Actions are pinned to commit hashes, with

@@ -118,7 +118,8 @@ stdenv.mkDerivation {
         --nix ${nixComponents.nix-cli}/bin/nix-instantiate \
         --plugin "$PWD/nixray.so" \
         --capture-library "$PWD/nixray-test-capture.so" \
-        --input-library "$PWD/nixray-test-input.so"
+        --input-library "$PWD/nixray-test-input.so" \
+        --audio-library "$PWD/nixray-test-audio.so"
     runHook postCheck
   '';
 
@@ -126,6 +127,7 @@ stdenv.mkDerivation {
     runHook preInstallCheck
     test ! -e "$out/lib/nix/plugins/nixray-test-capture.so"
     test ! -e "$out/lib/nix/plugins/nixray-test-input.so"
+    test ! -e "$out/lib/nix/plugins/nixray-test-audio.so"
     unset WAYLAND_DISPLAY
     export XDG_SESSION_TYPE=x11
     export HOME="$TMPDIR/home"

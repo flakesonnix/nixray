@@ -3,6 +3,7 @@
 #include "render_texture.hh"
 
 #include <set>
+#include <limits>
 
 namespace nixray {
 
@@ -10,7 +11,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
 {
     if (!value) return {};
     Reader r(state, pos);
-    r.fields(*value, {"textures", "fonts", "renderTextures", "shaders"});
+    r.fields(*value, {"textures", "fonts", "renderTextures", "shaders", "sounds", "music"});
     auto path = [&](Value & entry) {
         state.forceValue(entry, pos);
         if (entry.type() == nString) {
@@ -86,6 +87,18 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
         ShaderSpec spec{path(r.required(entry, "fragment")), uniformSpecs(state, pos, r.optional(entry, "uniforms"))};
         specs.shaders.emplace(std::move(name), std::move(spec));
     });
+    entries("sounds", [&](std::string name, Value & entry) {
+        specs.sounds.emplace(std::move(name), path(entry));
+    });
+    entries("music", [&](std::string name, Value & entry) {
+        MusicSpec music;
+        if (entry.type() == nAttrs) {
+            r.fields(entry, {"path", "looping"});
+            music.path = path(r.required(entry, "path"));
+            music.looping = r.defaultBool(entry, "looping", true);
+        } else music.path = path(entry);
+        specs.music.emplace(std::move(name), std::move(music));
+    });
     return specs;
 }
 
@@ -107,6 +120,18 @@ void Assets::RenderTextureDeleter::operator()(RenderTexture2D * target) const
 {
     if (target->id) UnloadRenderTexture(*target);
     delete target;
+}
+
+void Assets::SoundDeleter::operator()(Sound * sound) const
+{
+    if (sound->stream.buffer) UnloadSound(*sound);
+    delete sound;
+}
+
+void Assets::MusicDeleter::operator()(Music * music) const
+{
+    if (music->ctxData || music->stream.buffer) UnloadMusicStream(*music);
+    delete music;
 }
 
 Assets::Assets(const AssetSpecs & specs, const Reader & r)
@@ -140,6 +165,27 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
     }
     for (const auto & [name, spec] : specs.shaders)
         shaders.emplace(name, loadShaderAsset(spec, name, r));
+    for (const auto & [name, path] : specs.sounds) {
+        std::unique_ptr<Sound, SoundDeleter> sound(new Sound{});
+        *sound = LoadSound(path.c_str());
+        if (!IsSoundValid(*sound)) r.fail("could not load sound '" + name + "' from '" + path + "'");
+        sounds.emplace(name, std::move(sound));
+        soundLabels.push_back(name);
+    }
+    for (const auto & [name, spec] : specs.music) {
+        std::unique_ptr<Music, MusicDeleter> music(new Music{});
+        *music = LoadMusicStream(spec.path.c_str());
+        if (!IsMusicValid(*music) || !music->stream.buffer)
+            r.fail("could not load music '" + name + "' from '" + spec.path + "'");
+        // Native playback-time queries use signed int frame arithmetic.
+        if (music->frameCount > static_cast<unsigned>(std::numeric_limits<int>::max()))
+            r.fail("music frame count must fit signed 32-bit native coordinates");
+        music->looping = spec.looping;
+        for (const char * extension : {".wav", ".ogg", ".mp3", ".flac", ".qoa"})
+            if (IsFileExtension(spec.path.c_str(), extension)) seekableMusic.insert(name);
+        musicTracks.emplace(name, std::move(music));
+        musicLabels.push_back(name);
+    }
 }
 
 const Texture2D * Assets::texture(const std::string & name) const
@@ -164,6 +210,28 @@ const ShaderAsset * Assets::shader(const std::string & name) const
 {
     auto found = shaders.find(name);
     return found == shaders.end() ? nullptr : found->second.get();
+}
+
+const Sound * Assets::sound(const std::string & name) const
+{
+    auto found = sounds.find(name);
+    return found == sounds.end() ? nullptr : found->second.get();
+}
+
+const Music * Assets::music(const std::string & name) const
+{
+    auto found = musicTracks.find(name);
+    return found == musicTracks.end() ? nullptr : found->second.get();
+}
+
+bool Assets::musicCanSeek(const std::string & name) const
+{
+    return seekableMusic.count(name);
+}
+
+void Assets::updateMusic() const
+{
+    for (const auto & [name, track] : musicTracks) UpdateMusicStream(*track);
 }
 
 } // namespace nixray

@@ -20,6 +20,7 @@ from render_cases import RenderCases
 from collision_cases import CollisionCases
 from blend_cases import BlendCases
 from shader_cases import ShaderCases
+from audio_cases import AudioCases
 
 
 parser = argparse.ArgumentParser()
@@ -27,6 +28,7 @@ parser.add_argument("--nix", required=True)
 parser.add_argument("--plugin", required=True)
 parser.add_argument("--capture-library")
 parser.add_argument("--input-library")
+parser.add_argument("--audio-library")
 options, remaining = parser.parse_known_args()
 ROOT = Path(__file__).resolve().parent.parent
 RAY = f"import {ROOT / 'lib'}"
@@ -35,10 +37,11 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
-    CollisionCases, BlendCases, ShaderCases, unittest.TestCase,
+    CollisionCases, BlendCases, ShaderCases, AudioCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
+    audio_library = options.audio_library
 
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(
@@ -61,6 +64,7 @@ class PluginTests(
           raylib = builtins.typeOf builtins.raylib;
           legacyRun = builtins.typeOf builtins.raylibRun;
           validate = builtins.typeOf builtins.raylibValidate;
+          validateAudio = builtins.typeOf builtins.raylibValidateAudio;
           version = builtins.raylibVersion;
           worldToScreen = builtins.typeOf builtins.raylibWorldToScreen2D;
           screenToWorld = builtins.typeOf builtins.raylibScreenToWorld2D;
@@ -68,6 +72,7 @@ class PluginTests(
         self.assertEqual(result["raylib"], "lambda")
         self.assertEqual(result["legacyRun"], "lambda")
         self.assertEqual(result["validate"], "lambda")
+        self.assertEqual(result["validateAudio"], "lambda")
         self.assertEqual(result["worldToScreen"], "lambda")
         self.assertEqual(result["screenToWorld"], "lambda")
         self.assertIsInstance(result["version"], str)
@@ -155,6 +160,7 @@ class PluginTests(
             assert builtins.isFloat frame.mouseWheelX && builtins.isFloat frame.mouseWheelY;
             assert builtins.isString frame.textInput;
             assert builtins.isFunction frame.measureText;
+            assert frame.audio == {{ enabled = false; sounds = {{}}; music = {{}}; }};
             assert builtins.isList frame.keysDown && builtins.isList frame.keysPressed;
             assert builtins.isList frame.mouseDown && builtins.isList frame.mousePressed;
             assert builtins.isList frame.keysReleased && builtins.isList frame.mouseReleased;

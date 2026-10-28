@@ -1,6 +1,7 @@
 rec {
   run = builtins.raylib;
   validate = commands: builtins.raylibValidate commands;
+  validateAudio = actions: builtins.raylibValidateAudio actions;
   version = builtins.raylibVersion;
   worldToScreen2D = builtins.raylibWorldToScreen2D;
   screenToWorld2D = builtins.raylibScreenToWorld2D;
@@ -39,6 +40,18 @@ rec {
   keyPressed = frame: key: builtins.elem key frame.keysPressed;
   keyReleased = frame: key: builtins.elem key frame.keysReleased;
   mouseReleased = frame: button: builtins.elem button frame.mouseReleased;
+
+  playSound = sound: { op = "playSound"; inherit sound; };
+  pauseSound = sound: { op = "pauseSound"; inherit sound; };
+  resumeSound = sound: { op = "resumeSound"; inherit sound; };
+  stopSound = sound: { op = "stopSound"; inherit sound; };
+  setSoundVolume = args: args // { op = "setSoundVolume"; };
+  playMusic = music: { op = "playMusic"; inherit music; };
+  pauseMusic = music: { op = "pauseMusic"; inherit music; };
+  resumeMusic = music: { op = "resumeMusic"; inherit music; };
+  stopMusic = music: { op = "stopMusic"; inherit music; };
+  setMusicVolume = args: args // { op = "setMusicVolume"; };
+  seekMusic = args: args // { op = "seekMusic"; };
 
   clear = color: { op = "clear"; inherit color; };
   clip = args: args // { op = "clip"; };
