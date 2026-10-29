@@ -15,9 +15,11 @@
 , xvfb-run
 , mesa
 , dejavu_fonts
+, runCommand
 }:
 
 let
+  synthTones = import ./examples/synth/tones.nix { inherit runCommand; };
   launcher = writeShellScript "nixray-launcher" ''
     set -euo pipefail
 
@@ -97,6 +99,7 @@ stdenv.mkDerivation {
   checkPhase = ''
     runHook preCheck
     export NIXRAY_TEST_FONT=${dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf
+    export NIXRAY_TEST_SYNTH_TONES=${synthTones}
     export HOME="$TMPDIR/home"
     mkdir -p "$HOME"
     export NIX_STATE_DIR="$TMPDIR/nix-state"

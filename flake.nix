@@ -14,6 +14,7 @@
       packages = eachSystem (system: rec {
         nixray = packageFor system;
         default = nixray;
+        synth-tones = (import nixpkgs { inherit system; }).callPackage ./examples/synth/tones.nix { };
       });
       apps = eachSystem (system: {
         default = {

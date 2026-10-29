@@ -805,6 +805,30 @@ nix run . -- examples/audio.nix --arg sound ./click.wav --arg music ./theme.ogg
 
 A plays a sound effect, Enter pauses/resumes music, and the wheel changes volume.
 
+#### Self-contained Nix synth
+
+```sh
+nix run . -- examples/synth.nix
+```
+
+Hold **A W S E D F T G Y H U J K** to play a chromatic C4–C5 keyboard;
+multiple keys play chords. **Space** cycles triangle/square/saw, the **wheel**
+changes volume, and **Enter** silences all voices until held keys are released.
+Keys light up while held and fade through the release envelope.
+
+The instrument, oscillator math, PCM samples, envelopes and drawing are Nix.
+No Python, downloaded samples or external audio files are used. First launch
+builds a small WAV bank using the pinned nixpkgs; a build shell only writes the
+Nix-computed bytes. The same bank is available as `nix build .#synth-tones`,
+or can be supplied with `--arg tones ./my-tone-bank`.
+
+This demonstrates the existing audio API, not a real-time PCM callback: each
+note loops a generated periodic waveform through a music stream. Attack (20 ms)
+and release (150 ms) volume updates occur per graphical frame, not per sample;
+waveform changes restart held notes. Sample rates approximate equal temperament
+within 0.004 Hz, the square/saw waves are not band-limited, and output volume has
+headroom for all 13 voices. The example requires a working audio backend to hear.
+
 ## Evaluation semantics and safety
 
 Nix is lazy and memoizes expressions. Independent side-effecting builtins for
@@ -833,7 +857,9 @@ nix flake check -L
 nix develop
 cmake -S . -B build
 cmake --build build
-env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+nix build .#synth-tones --out-link build/synth-tones
+env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 NIXRAY_TEST_SYNTH_TONES="$PWD/build/synth-tones" \
+  xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
   python3 tests/test_plugin.py \
   --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
   --capture-library "$PWD/build/nixray-test-capture.so" \
