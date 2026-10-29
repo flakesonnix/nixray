@@ -11,6 +11,7 @@ add_library(nixray MODULE
     src/plugin.cc
     src/commands.cc
     src/runtime.cc
+    src/window.cc
     src/input.cc
     src/assets.cc
     src/texture.cc
@@ -34,7 +35,7 @@ install(TARGETS nixray LIBRARY DESTINATION lib/nix/plugins)
 include(CTest)
 if(BUILD_TESTING)
     # These hooks are only preloaded by tests and never installed with the plugin.
-    foreach(hook IN ITEMS capture input audio)
+    foreach(hook IN ITEMS capture input audio window)
         add_library(nixray-test-${hook} MODULE tests/${hook}.cc)
         target_compile_features(nixray-test-${hook} PRIVATE cxx_std_23)
         target_compile_options(nixray-test-${hook} PRIVATE -Wall -Wextra)

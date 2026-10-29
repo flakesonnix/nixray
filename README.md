@@ -71,6 +71,8 @@ Loading the plugin registers:
   Also usable during pure evaluation.
 - `builtins.raylibValidateAudio actions`: validate a flat audio action list and
   return its length. Pure; no window, device or asset loading.
+- `builtins.raylibValidateWindow actions`: validate a flat window action list and
+  return its length. Pure; no display, window or native mutations.
 - `builtins.raylibVersion`: linked raylib version string.
 - `builtins.raylibWorldToScreen2D camera point` and
   `builtins.raylibScreenToWorld2D camera point`: pure coordinate conversions;
@@ -135,7 +137,7 @@ The callback receives a fresh attribute set each frame:
 {
   frame = 0;                # Zero-based frame number
   time = 0.0; delta = 0.0;   # Raylib seconds and previous frame duration
-  width = 800; height = 450; # Current drawable dimensions
+  width = 800; height = 450; # Current logical screen dimensions
   mouseX = 0; mouseY = 0;
   mouseWheelX = 0.0; mouseWheelY = 0.0; # Per-frame wheel movement on both axes
   textInput = "";                     # Queued committed characters as UTF-8
@@ -149,14 +151,16 @@ The callback receives a fresh attribute set each frame:
     dragVector = { x = 0.0; y = 0.0; }; dragAngle = 0.0;
     pinchVector = { x = 0.0; y = 0.0; }; pinchAngle = 0.0; };
   audio = { enabled = false; sounds = {}; music = {}; }; # Playback snapshot
+  window = { /* Immutable window state; schema below */ };
   state = null;                     # Previous frame's application state
 }
 ```
 
-It returns `{ commands = [ ... ]; audio = [ ... ]; state = nextState; close = false; }`.
+It returns `{ commands = [ ... ]; audio = [ ... ]; window = [ ... ]; state = nextState; close = false; }`.
 Only `commands` is required. Omitted `state` preserves the previous state.
-Omitted `audio` means no playback actions. `close = true` exits **after** processing
-audio and drawing that frame. The native loop returns
+Omitted `audio`/`window` means no corresponding actions. `close = true` exits
+**after** processing audio, drawing that frame, and applying window actions.
+The native loop returns
 `{ frames = totalRenderedFrames; state = finalState; }`.
 
 The frame also contains `measureText`, a native function for text layout with
@@ -264,6 +268,85 @@ Try `nix run . -- examples/devices.nix`: move with a gamepad's left stick or
 keyboard arrows; tap/click or press the south face button to change color.
 The plain Nix demo displays contacts and native gesture state, and works without
 connected gamepads or touch hardware.
+
+### Window state and controls
+
+Each callback receives an eagerly copied `frame.window` snapshot:
+
+```nix
+{
+  title = "nixray"; targetFPS = 60;
+  position = { x = 0.0; y = 0.0; };
+  renderWidth = 800; renderHeight = 450;
+  dpiScale = { x = 1.0; y = 1.0; };
+  monitor = 0;
+  fullscreen = false; resizable = false; hidden = false;
+  minimized = false; maximized = false; focused = true; resized = false;
+  cursorMode = "normal"; cursorOnScreen = true;
+}
+```
+
+The title, target FPS and cursor mode record the plugin's last **requested**
+settings; other fields are native observations. Position uses native float
+desktop coordinates; monitor is raylib's zero-based monitor index. Render size
+is the framebuffer's pixel size, distinct from top-level `frame.width/height`
+(logical screen size). DPI scale is backend-reported; do not assume a fixed
+relationship to framebuffer size on every platform. Nonfinite position/DPI
+components become `0.0`. `resized` is the native per-frame resize indication,
+not a synthetic acknowledgement of a resize action. Native event delivery and
+window-manager decisions can delay or reject visible state changes.
+
+Return a separate, flat `window` list to request changes:
+
+```nix
+let ray = import ./lib;
+in ray.run {} (frame: {
+  commands = [ (ray.clear ray.colors.black) ];
+  window = if frame.frame == 0 then [
+    (ray.setWindowTitle "Updated from Nix")
+    (ray.setWindowSize { width = 960; height = 540; })
+    (ray.setWindowResizable true)
+  ] else [];
+})
+```
+
+| `op` | Required attributes besides `op` | Nix helper |
+| --- | --- | --- |
+| `setWindowTitle` | `title` (context-free string without NUL bytes; empty allowed) | `ray.setWindowTitle title` |
+| `setWindowSize` | `width`, `height` (integers in `1..16384`) | `ray.setWindowSize { width; height; }` |
+| `setWindowPosition` | `x`, `y` (signed 32-bit integers) | `ray.setWindowPosition { x; y; }` |
+| `setTargetFPS` | `fps` (nonnegative signed 32-bit integer; `0` uncapped) | `ray.setTargetFPS fps` |
+| `setWindowFullscreen` | `enabled` (boolean) | `ray.setWindowFullscreen enabled` |
+| `setWindowResizable` | `enabled` (boolean) | `ray.setWindowResizable enabled` |
+| `setCursorMode` | `mode` (`"normal"`, `"hidden"`, `"captured"`) | `ray.setCursorMode mode` |
+
+Fullscreen/resizable actions are **absolute**, not toggles; repeating `true`
+does not repeatedly switch modes. Cursor `normal` releases capture and shows
+the cursor; `hidden` releases capture and hides it; `captured` requests raylib's
+disabled/locked cursor mode. Focus and backend policies still govern actual
+capture. No visibility/minimize/maximize/monitor-switch actions are exposed yet.
+
+All drawing, audio and window lists, `close`, and the next state are evaluated
+and validated **before any frame effects**. Then audio actions run, the frame
+draws, and window actions execute **after `EndDrawing`**, in their list order.
+This preserves the dimensions used to compile current-frame geometry/clips.
+Later snapshots observe native changes; FPS changes affect later frame pacing,
+not the delay already completed for the current frame. `close = true` still
+executes the window list before closing. Validation failures apply no listed
+window actions and do not draw that frame; native backend requests are best
+effort, not a transaction that rolls back earlier successful actions.
+
+`ray.validateWindow actions` aliases `builtins.raylibValidateWindow`; it returns
+the list length without a window, including in pure/restricted evaluation.
+Window actions are not drawing/audio commands and cannot nest inside drawing
+scopes. Snapshots (including retained closures) never query later or closed
+windows. Titles have native storage lasting until window close, and fullscreen
+is exited before native window destruction, including during exception cleanup,
+so fullscreen/decoration flags do not leak into subsequent runs.
+
+Try `nix run . -- examples/window.nix`: Space resizes, F toggles fullscreen,
+R toggles resizability, C cycles cursor modes, T changes the title, P switches
+the target FPS, and M moves the window to `(80, 80)`. All interaction logic is Nix.
 
 ### Drawing commands
 
@@ -1216,7 +1299,8 @@ env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 NIXRAY_TEST_SYNTH_TONES="$PWD/build/
   --nix "$(command -v nix-instantiate)" --plugin "$PWD/build/nixray.so" \
   --capture-library "$PWD/build/nixray-test-capture.so" \
   --input-library "$PWD/build/nixray-test-input.so" \
-  --audio-library "$PWD/build/nixray-test-audio.so"
+  --audio-library "$PWD/build/nixray-test-audio.so" \
+  --window-library "$PWD/build/nixray-test-window.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev

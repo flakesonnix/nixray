@@ -14,6 +14,7 @@ from texture_control_cases import TextureControlCases
 from pixel_cases import PixelCases
 from input_cases import InputCases
 from device_input_cases import DeviceInputCases
+from window_cases import WindowCases
 from text_cases import TextCases
 from shape_cases import ShapeCases
 from drawing_cases import DrawingCases
@@ -36,6 +37,7 @@ parser.add_argument("--plugin", required=True)
 parser.add_argument("--capture-library")
 parser.add_argument("--input-library")
 parser.add_argument("--audio-library")
+parser.add_argument("--window-library")
 options, remaining = parser.parse_known_args()
 ROOT = Path(__file__).resolve().parent.parent
 RAY = f"import {ROOT / 'lib'}"
@@ -44,12 +46,13 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, TextureControlCases, PixelCases, InputCases, TextCases, ShapeCases, DrawingCases,
-    DeviceInputCases, CurveCases, ClipCases, CameraCases, RenderCases,
+    WindowCases, DeviceInputCases, CurveCases, ClipCases, CameraCases, RenderCases,
     CollisionCases, CollisionExtraCases, BlendCases, ShaderCases, AudioCases, AudioControlCases, SynthCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library
     audio_library = options.audio_library
+    window_library = options.window_library
 
     def evaluate(self, expression, *, error=None, flags=(), env=None):
         result = subprocess.run(

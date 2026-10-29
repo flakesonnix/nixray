@@ -2,6 +2,7 @@ rec {
   run = builtins.raylib;
   validate = commands: builtins.raylibValidate commands;
   validateAudio = actions: builtins.raylibValidateAudio actions;
+  validateWindow = actions: builtins.raylibValidateWindow actions;
   version = builtins.raylibVersion;
   worldToScreen2D = builtins.raylibWorldToScreen2D;
   screenToWorld2D = builtins.raylibScreenToWorld2D;
@@ -67,6 +68,13 @@ rec {
   gamepadButtonPressed = pad: button: pad != null && builtins.elem button pad.buttonsPressed;
   gamepadButtonReleased = pad: button: pad != null && builtins.elem button pad.buttonsReleased;
   gestureDetected = frame: code: frame.gesture.detected == code;
+  setWindowTitle = title: { op = "setWindowTitle"; inherit title; };
+  setWindowSize = args: args // { op = "setWindowSize"; };
+  setWindowPosition = args: args // { op = "setWindowPosition"; };
+  setTargetFPS = fps: { op = "setTargetFPS"; inherit fps; };
+  setWindowFullscreen = enabled: { op = "setWindowFullscreen"; inherit enabled; };
+  setWindowResizable = enabled: { op = "setWindowResizable"; inherit enabled; };
+  setCursorMode = mode: { op = "setCursorMode"; inherit mode; };
 
   playSound = sound: { op = "playSound"; inherit sound; };
   pauseSound = sound: { op = "pauseSound"; inherit sound; };

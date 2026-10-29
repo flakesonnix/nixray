@@ -5,6 +5,7 @@
 #include "reader.hh"
 #include "text.hh"
 #include "audio.hh"
+#include "window.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
@@ -27,17 +28,27 @@ struct Window {
         SetTraceLogLevel(LOG_WARNING);
         SetConfigFlags((hidden ? FLAG_WINDOW_HIDDEN : 0) |
                        (resizable ? FLAG_WINDOW_RESIZABLE : 0));
-        InitWindow(width, height, title.c_str());
+        // Empty titles must still replace raylib's pointer from a previous run.
+        InitWindow(width, height, title.empty() ? "nixray" : title.c_str());
         // SetConfigFlags only ORs flags and raylib keeps them after CloseWindow.
         // Reconcile both flags so a later run can undo an earlier run's config.
         if (IsWindowReady()) {
+            if (title.empty()) SetWindowTitle(title.c_str());
             if (hidden) SetWindowState(FLAG_WINDOW_HIDDEN);
             else ClearWindowState(FLAG_WINDOW_HIDDEN);
             if (resizable) SetWindowState(FLAG_WINDOW_RESIZABLE);
             else ClearWindowState(FLAG_WINDOW_RESIZABLE);
         }
     }
-    ~Window() { if (IsWindowReady()) CloseWindow(); }
+    ~Window()
+    {
+        if (!IsWindowReady()) return;
+        // CloseWindow leaves native flags behind. Exit fullscreen while its
+        // platform window/context still exist, including on evaluation errors.
+        if (IsWindowFullscreen()) ClearWindowState(FLAG_FULLSCREEN_MODE);
+        ClearWindowState(FLAG_WINDOW_UNDECORATED);
+        CloseWindow();
+    }
     Window(const Window &) = delete;
     Window & operator=(const Window &) = delete;
 };
@@ -75,7 +86,8 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     auto * initial = r.optional(*args[0], "state");
     auto current = allocRootValue(initial ? initial : &Value::vNull);
     state.forceValueDeep(**current);
-    Window window(width, height, title, hidden, resizable);
+    WindowState windowState{std::move(title), fps};
+    Window window(width, height, windowState.title, hidden, resizable);
     if (!IsWindowReady()) r.fail("could not initialize a raylib window; check DISPLAY and OpenGL support");
     // Gesture flags are native global state; set defaults too on every new run.
     SetGesturesEnabled(gestures);
@@ -88,7 +100,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(22);
+        auto frame = state.buildBindings(23);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());
@@ -96,6 +108,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         frame.alloc("height").mkInt(GetScreenHeight());
         addInput(state, frame);
         audioSnapshot(state, audio, assets, frame.alloc("audio"));
+        windowSnapshot(state, windowState, frame.alloc("window"));
         frame.insert(state.symbols.create("state"), *current);
         frame.insert(state.symbols.create("measureText"), *measureText);
         // Callbacks may retain their input inside state (including closures).
@@ -104,13 +117,15 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         (**input).mkAttrs(frame);
         auto output = allocRootValue(state.allocValue());
         state.callFunction(*args[1], **input, **output, pos);
-        r.fields(**output, {"commands", "audio", "state", "close"});
+        r.fields(**output, {"commands", "audio", "window", "state", "close"});
         auto batch = commands(state, pos, r.required(**output, "commands"), &assets);
         std::vector<Command> effects;
         if (auto * actions = r.optional(**output, "audio")) {
             effects = audioCommands(state, pos, *actions, audio ? &assets : nullptr);
             if (!audio && !effects.empty()) r.fail("audio actions require config.audio = true");
         }
+        std::vector<Command> windowEffects;
+        if (auto * actions = r.optional(**output, "window")) windowEffects = windowCommands(state, pos, *actions, &windowState);
         bool close = r.defaultBool(**output, "close", false);
         if (auto * next = r.optional(**output, "state")) {
             // Force state at the frame boundary, avoiding a chain of numeric
@@ -125,6 +140,9 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         BeginDrawing();
         for (auto & command : batch) command();
         EndDrawing();
+        // Geometry and clips were compiled against this frame's dimensions.
+        // Change window state only after the entire frame has been drawn.
+        for (const auto & action : windowEffects) action();
         ++frames;
         if (close) break;
     }

@@ -3,6 +3,7 @@
 #include "camera.hh"
 #include "collision.hh"
 #include "audio.hh"
+#include "window.hh"
 
 #include <nix/expr/primops.hh>
 #include <raylib.h>
@@ -21,7 +22,8 @@ RegisterPrimOp raylibOp({
            "Snapshots include press/release states, two-axis wheel deltas and UTF-8 text input. "
            "frame.measureText measures text using the default or a named font. "
            "Opt-in config.audio enables sound/music assets and playback snapshots under frame.audio. "
-           "The callback returns { commands; audio ? []; state ? previousState; close ? false; }. "
+           "frame.window snapshots window state; callback.window actions apply after drawing. "
+           "The callback returns { commands; audio ? []; window ? []; state ? previousState; close ? false; }. "
            "Returns { frames; state; }. Impure evaluation only.",
     .impl = run,
     .experimentalFeature = std::nullopt,
@@ -53,6 +55,17 @@ RegisterPrimOp validateAudioOp({
     .doc = "Validate a flat audio action list without a window, device or asset loading; return its length. Pure.",
     .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
         out.mkInt(static_cast<int64_t>(audioCommands(state, pos, *args[0]).size()));
+    },
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp validateWindowOp({
+    .name = "__raylibValidateWindow",
+    .args = {"actions"},
+    .arity = 1,
+    .doc = "Validate a flat window action list without opening a window or changing native state; return its length. Pure.",
+    .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
+        out.mkInt(static_cast<int64_t>(windowCommands(state, pos, *args[0]).size()));
     },
     .experimentalFeature = std::nullopt,
 });
