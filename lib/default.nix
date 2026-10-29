@@ -69,6 +69,7 @@ rec {
   paint = args: args // { op = "paint"; };
   text = args: args // { op = "text"; };
   texture = args: args // { op = "texture"; };
+  textureNPatch = args: args // { op = "textureNPatch"; };
   rectangle = args: args // { op = "rectangle"; };
   rectangleLines = args: args // { op = "rectangleLines"; };
   rectangleGradientV = args: args // { op = "rectangleGradientV"; };

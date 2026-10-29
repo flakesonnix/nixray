@@ -87,6 +87,8 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             });
         } else if (op == "texture") {
             result.emplace_back(textureCommand(state, pos, *entry, assets, activeTexture));
+        } else if (op == "textureNPatch") {
+            result.emplace_back(texturePatchCommand(state, pos, *entry, assets, activeTexture));
         } else if (op == "text") {
             result.emplace_back(textCommand(state, pos, *entry, assets));
         } else if (op == "triangle" || op == "triangleLines" || op == "ellipse" || op == "ellipseLines" ||

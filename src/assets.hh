@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <set>
 #include <vector>
@@ -20,7 +21,20 @@ struct FontSpec {
     bool customized = false;
 };
 
-struct TextureSize { int width, height; };
+struct TextureOptions {
+    std::optional<int> filter, wrap;
+    bool repeats() const { return wrap && *wrap != TEXTURE_WRAP_CLAMP; }
+};
+
+struct TextureSpec {
+    std::string path;
+    TextureOptions options;
+};
+
+struct TextureSize {
+    int width, height;
+    TextureOptions options;
+};
 
 struct MusicSpec {
     std::string path;
@@ -28,7 +42,7 @@ struct MusicSpec {
 };
 
 struct AssetSpecs {
-    std::map<std::string, std::string> textures;
+    std::map<std::string, TextureSpec> textures;
     std::map<std::string, FontSpec> fonts;
     std::map<std::string, TextureSize> renderTextures;
     std::map<std::string, ShaderSpec> shaders;
@@ -48,6 +62,7 @@ class Assets {
     std::map<std::string, std::unique_ptr<Texture2D, TextureDeleter>> textures;
     std::map<std::string, std::unique_ptr<Font, FontDeleter>> fonts;
     std::map<std::string, std::unique_ptr<RenderTexture2D, RenderTextureDeleter>> renderTextures;
+    std::map<std::string, TextureOptions> textureOptions;
     std::map<std::string, std::unique_ptr<ShaderAsset>> shaders;
     std::map<std::string, std::unique_ptr<Sound, SoundDeleter>> sounds;
     std::map<std::string, std::unique_ptr<Music, MusicDeleter>> musicTracks;
@@ -62,6 +77,7 @@ public:
     const Texture2D * texture(const std::string & name) const;
     const Font * font(const std::string & name) const;
     const RenderTexture2D * renderTexture(const std::string & name) const;
+    bool textureRepeats(const std::string & name) const;
     const ShaderAsset * shader(const std::string & name) const;
     const Sound * sound(const std::string & name) const;
     const Music * music(const std::string & name) const;

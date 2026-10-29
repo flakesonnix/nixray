@@ -192,6 +192,7 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `paint` | `texture` (render texture name), `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
+| `textureNPatch` | `texture`, `x`, `y`, `width`, `height`, `borders = { left; top; right; bottom; }` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
 | `rectangleGradientV` | `x`, `y`, `width`, `height`, `top`, `bottom` |
 | `rectangleGradientH` | `x`, `y`, `width`, `height`, `left`, `right` |
@@ -235,7 +236,8 @@ than negative dimensions.
 
 For sprites/atlases, `texture` accepts `source = { x; y; width; height; }` in
 image pixels. Offsets must be nonnegative integers and dimensions positive
-integers. The rectangle must fit the loaded texture; cropping happens before
+integers. The rectangle must fit the loaded texture unless that asset explicitly
+selects `wrap = "repeat"` or `"mirrorRepeat"`; cropping happens before
 scaling and rotation. Omitting `source` uses the whole image. Pure validation
 checks the rectangle's structure, but its texture bounds are checked only when
 running with loaded assets.
@@ -560,6 +562,9 @@ the first callback, and start fully transparent so stamps only show painted
 content. GPU resources are released with the other assets before the window
 closes.
 
+Optional `filter` and `wrap` fields use the same sampling controls as image
+textures below. They persist across paints; no mipmap generation is required.
+
 `paint` requires `texture` (a declared render texture name) and `commands`;
 `clear` is an optional boolean, defaulting to `true`, which replaces previous
 contents with transparent black before the children draw. Set `clear = false`
@@ -567,9 +572,9 @@ to accumulate across paints and frames. Children start a fresh coordinate
 system with `(0, 0)` at the texture's top-left: enclosing clips and cameras do
 not apply inside, blending starts in alpha mode, and the default shader is used.
 Paint children may freely use `clip`, `camera2D`, `blend`, `shader`, shapes, text
-and `texture` stamps.
+and `texture`/`textureNPatch` stamps.
 Painting may not nest inside another paint, and a
-`texture` command may not stamp the texture being painted; alternating two
+texture-stamping command may not sample the texture being painted; alternating two
 textures covers ping-pong effects.
 
 When a paint appears inside a window clip, the scissor pauses for the target
@@ -697,6 +702,76 @@ transparent black instead of loading file contents. Native resources are
 released before the window closes, including on
 callback exceptions or partial loading failures. `raylibValidate` checks command
 structure only: it does not load assets or verify that names are declared.
+
+#### Texture sampling
+
+Path-only texture declarations remain unchanged. An options set additionally
+selects filtering and wrapping, once per asset:
+
+```nix
+assets.textures.logo = { path = ./logo.png; filter = "bilinear"; wrap = "clamp"; };
+assets.textures.tiles = { path = ./tiles.png; wrap = "repeat"; };
+assets.renderTextures.canvas = { width = 128; height = 128; filter = "bilinear"; };
+```
+
+- `filter`: `"point"` or `"bilinear"`. Options sets default to point filtering;
+  path-only declarations retain raylib's original sampler defaults.
+- `wrap`: `"clamp"`, `"repeat"` or `"mirrorRepeat"`, applied to both axes.
+  Omitting it preserves native wrapping **and the existing strict crop bounds**.
+  Explicit repeat modes allow ordinary `texture` source rectangles beyond the
+  image dimensions, including render textures; coordinates stay nonnegative and
+  dimensions positive signed 32-bit integers.
+
+To tile, extend the source rectangle instead of merely increasing `scale`:
+
+```nix
+ray.texture { texture = "tiles"; x = 0; y = 0;
+  source = { x = 0; y = 0; width = 512; height = 256; };
+}
+```
+
+Filtering/wrapping belong to each named GPU asset, not global drawing state.
+Declare the same path under separate names for different settings. Bilinear atlas
+crops can blend neighboring texels; pad atlas regions when that matters. Mipmapped
+and anisotropic filters, and mirror-clamp wrapping, are not exposed yet.
+
+#### Nine-patch panels
+
+`textureNPatch` stretches a nine-slice panel while retaining border sizes in
+drawing-coordinate units (one source pixel per border unit before camera scaling):
+
+```nix
+ray.textureNPatch {
+  texture = "logo"; x = 24; y = 24; width = 320; height = 140;
+  borders = { left = 4; top = 4; right = 4; bottom = 4; };
+}
+```
+
+Destination bounds and all four border widths are nonnegative signed 32-bit
+integers. Source regions must retain a **nonempty center**: left + right must be
+less than source width, and top + bottom less than source height. Optional
+`source = { x; y; width; height; }` always selects a bounded region, even on a
+repeating asset. Omitting it selects the whole image. Zero destination width or
+height draws nothing, but every field and known asset bound is still validated.
+
+If the destination is smaller than the borders, each axis compresses its two
+borders proportionally; the full source corners are preserved and the destination
+center disappears. `tint`, `rotation` and `origin` match ordinary texture stamps,
+with the pivot relative to the **whole panel**, not each slice. Scale/flip flags
+and three-slice layouts are not exposed by this command.
+
+Panels work with image and render-texture assets, including top-left logical
+crops on framebuffer textures, and honor camera, clip, blend and shader scopes.
+They may paint into another target, but never sample their own active paint target.
+Pure validation checks border sums when an explicit source size is provided;
+whole-asset dimensions resolve during the window run.
+
+Try `nix run . -- examples/textures.nix` for a self-contained Nix demonstration:
+point/bilinear scaling, repeat/mirror-repeat tiling, and a nine-patch panel resized
+by holding the left mouse button and moving the pointer. All source images are
+painted into render textures; no external files are needed.
+
+#### Font assets
 
 Font paths retain raylib's `LoadFont` defaults (including a 32-pixel TrueType
 atlas and ASCII glyphs 32..126). Alternatively, declare a font options set:

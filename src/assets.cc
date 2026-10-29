@@ -7,6 +7,36 @@
 
 namespace nixray {
 
+namespace {
+
+TextureOptions textureOptions(const Reader & r, Value & value)
+{
+    TextureOptions options;
+    options.filter = TEXTURE_FILTER_POINT;
+    if (auto * filter = r.optional(value, "filter")) {
+        auto name = r.string(*filter);
+        if (name == "point") options.filter = TEXTURE_FILTER_POINT;
+        else if (name == "bilinear") options.filter = TEXTURE_FILTER_BILINEAR;
+        else r.fail("unknown texture filter '" + name + "'");
+    }
+    if (auto * wrap = r.optional(value, "wrap")) {
+        auto name = r.string(*wrap);
+        if (name == "clamp") options.wrap = TEXTURE_WRAP_CLAMP;
+        else if (name == "repeat") options.wrap = TEXTURE_WRAP_REPEAT;
+        else if (name == "mirrorRepeat") options.wrap = TEXTURE_WRAP_MIRROR_REPEAT;
+        else r.fail("unknown texture wrap '" + name + "'");
+    }
+    return options;
+}
+
+void applyTextureOptions(Texture2D texture, const TextureOptions & options)
+{
+    if (options.filter) SetTextureFilter(texture, *options.filter);
+    if (options.wrap) SetTextureWrap(texture, *options.wrap);
+}
+
+} // namespace
+
 AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
 {
     if (!value) return {};
@@ -42,7 +72,13 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
     };
     AssetSpecs specs;
     entries("textures", [&](std::string name, Value & entry) {
-        specs.textures.emplace(std::move(name), path(entry));
+        TextureSpec texture;
+        if (entry.type() == nAttrs) {
+            r.fields(entry, {"path", "filter", "wrap"});
+            texture.path = path(r.required(entry, "path"));
+            texture.options = textureOptions(r, entry);
+        } else texture.path = path(entry);
+        specs.textures.emplace(std::move(name), std::move(texture));
     });
     entries("fonts", [&](std::string name, Value & entry) {
         FontSpec font;
@@ -74,9 +110,9 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
         specs.fonts.emplace(std::move(name), std::move(font));
     });
     entries("renderTextures", [&](std::string name, Value & entry) {
-        r.fields(entry, {"width", "height"});
+        r.fields(entry, {"width", "height", "filter", "wrap"});
         TextureSize size{r.integer(r.required(entry, "width"), "width", 1, 16384),
-                         r.integer(r.required(entry, "height"), "height", 1, 16384)};
+                         r.integer(r.required(entry, "height"), "height", 1, 16384), textureOptions(r, entry)};
         specs.renderTextures.emplace(std::move(name), size);
     });
     // The texture command resolves both groups in one namespace.
@@ -136,10 +172,12 @@ void Assets::MusicDeleter::operator()(Music * music) const
 
 Assets::Assets(const AssetSpecs & specs, const Reader & r)
 {
-    for (const auto & [name, path] : specs.textures) {
+    for (const auto & [name, spec] : specs.textures) {
         std::unique_ptr<Texture2D, TextureDeleter> texture(new Texture2D{});
-        *texture = LoadTexture(path.c_str());
-        if (!IsTextureValid(*texture)) r.fail("could not load texture '" + name + "' from '" + path + "'");
+        *texture = LoadTexture(spec.path.c_str());
+        if (!IsTextureValid(*texture)) r.fail("could not load texture '" + name + "' from '" + spec.path + "'");
+        applyTextureOptions(*texture, spec.options);
+        textureOptions.emplace(name, spec.options);
         textures.emplace(name, std::move(texture));
     }
     for (const auto & [name, spec] : specs.fonts) {
@@ -161,6 +199,8 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
         if (!IsRenderTextureValid(*target)) r.fail("could not create render texture '" + name + "'");
         // Framebuffer contents start undefined; stamps must never read stale pixels.
         initializeRenderTexture(*target);
+        applyTextureOptions(target->texture, spec.options);
+        textureOptions.emplace(name, spec.options);
         renderTextures.emplace(name, std::move(target));
     }
     for (const auto & [name, spec] : specs.shaders)
@@ -210,6 +250,12 @@ const ShaderAsset * Assets::shader(const std::string & name) const
 {
     auto found = shaders.find(name);
     return found == shaders.end() ? nullptr : found->second.get();
+}
+
+bool Assets::textureRepeats(const std::string & name) const
+{
+    auto found = textureOptions.find(name);
+    return found != textureOptions.end() && found->second.repeats();
 }
 
 const Sound * Assets::sound(const std::string & name) const
