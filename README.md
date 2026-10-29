@@ -753,12 +753,39 @@ The callback's optional `audio` list is **separate from drawing commands**:
 | --- | --- |
 | `playSound`, `pauseSound`, `resumeSound`, `stopSound` | `sound` (asset name) |
 | `setSoundVolume` | `sound`, `volume` |
+| `setSoundPitch` | `sound`, `pitch` (speed/pitch multiplier) |
+| `setSoundPan` | `sound`, `pan` (stereo position) |
 | `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic` | `music` (asset name) |
 | `setMusicVolume` | `music`, `volume` |
+| `setMusicPitch` | `music`, `pitch` (speed/pitch multiplier) |
+| `setMusicPan` | `music`, `pan` (stereo position) |
 | `seekMusic` | `music`, `position` (seconds) |
 
-Transport helpers take a name, e.g. `ray.pauseMusic "theme"`; volume/seek helpers
+Transport helpers take a name, e.g. `ray.pauseMusic "theme"`; volume/pitch/pan/seek helpers
 take the field set shown above. Volume must be a finite number in `0..1`.
+Pitch must be finite and in `0.125..8`: `1` is normal, `2` is one octave up and
+twice as fast, and `0.5` is one octave down and half as fast. This bounded range
+keeps native resampling coordinates safe. This is playback-rate adjustment,
+not time stretching. Pan must be finite and in `-1..1`: **-1 left, 0 center,
++1 right**. Mono assets are mixed into stereo; for stereo assets pan scales
+the existing channels rather than folding one channel into the other.
+
+```nix
+audio = [
+  (ray.setSoundPitch { sound = "click"; pitch = 2; })
+  (ray.setSoundPan { sound = "click"; pan = -1; })
+  (ray.setMusicPitch { music = "theme"; pitch = 0.5; })
+  (ray.setMusicPan { music = "theme"; pan = 0.5; })
+];
+```
+
+Pitch/pan are absolute per-asset settings, not cumulative offsets. Defaults are
+pitch `1` and centered pan `0`; changes can be made before or during playback and
+persist through pause/resume and stop/play until changed or the window exits.
+Repeatedly setting the same pitch does not keep transposing the asset. These
+settings do not change the system mixer volume or route, and the playback
+snapshot schema is unchanged.
+
 Seek positions must be finite, nonnegative and no greater than track length,
 with a safe native frame conversion. Seeking is exposed for WAV/OGG/MP3/FLAC/QOA,
 not module formats; decoder/buffer precision means it is not sample-exact output
@@ -804,6 +831,14 @@ nix run . -- examples/audio.nix --arg sound ./click.wav --arg music ./theme.ogg
 ```
 
 A plays a sound effect, Enter pauses/resumes music, and the wheel changes volume.
+
+`examples/audio-controls.nix` needs no external files: it uses the Nix-generated
+tone bank, starts a looping tone, and exposes pitch with Up/Down, pan with
+Left/Right, volume with the wheel, A for a sound effect, and Space to pause/resume:
+
+```sh
+nix run . -- examples/audio-controls.nix
+```
 
 #### Self-contained Nix synth
 

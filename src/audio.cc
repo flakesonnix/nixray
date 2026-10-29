@@ -6,6 +6,20 @@
 
 namespace nixray {
 
+namespace {
+
+float nativePan(float pan)
+{
+#if RAYLIB_VERSION_MAJOR == 5 && RAYLIB_VERSION_MINOR < 6
+    // raylib 5.5 mixes 1 as left and 0 as right; 5.6 uses -1..1.
+    return (1.0f - pan) / 2.0f;
+#else
+    return pan;
+#endif
+}
+
+} // namespace
+
 AudioDevice::AudioDevice(bool enabled, const Reader & r)
 {
     if (!enabled) return;
@@ -29,20 +43,26 @@ std::vector<Command> audioCommands(EvalState & state, PosIdx pos, Value & value,
     for (auto * entry : value.listView()) {
         auto op = r.string(r.required(*entry, "op"));
         bool sound = op == "playSound" || op == "pauseSound" || op == "resumeSound" ||
-                     op == "stopSound" || op == "setSoundVolume";
+                     op == "stopSound" || op == "setSoundVolume" || op == "setSoundPitch" || op == "setSoundPan";
         bool music = op == "playMusic" || op == "pauseMusic" || op == "resumeMusic" ||
-                     op == "stopMusic" || op == "setMusicVolume" || op == "seekMusic";
+                     op == "stopMusic" || op == "setMusicVolume" || op == "setMusicPitch" ||
+                     op == "setMusicPan" || op == "seekMusic";
         if (!sound && !music) r.fail("unknown audio operation '" + op + "'");
         bool volume = op == "setSoundVolume" || op == "setMusicVolume";
+        bool pitch = op == "setSoundPitch" || op == "setMusicPitch";
+        bool pan = op == "setSoundPan" || op == "setMusicPan";
         bool seek = op == "seekMusic";
-        if (sound && volume) r.fields(*entry, {"op", "sound", "volume"});
-        else if (sound) r.fields(*entry, {"op", "sound"});
-        else if (volume) r.fields(*entry, {"op", "music", "volume"});
-        else if (seek) r.fields(*entry, {"op", "music", "position"});
-        else r.fields(*entry, {"op", "music"});
-        auto name = r.string(r.required(*entry, sound ? "sound" : "music"));
+        const char * resource = sound ? "sound" : "music";
+        if (volume) r.fields(*entry, {"op", resource, "volume"});
+        else if (pitch) r.fields(*entry, {"op", resource, "pitch"});
+        else if (pan) r.fields(*entry, {"op", resource, "pan"});
+        else if (seek) r.fields(*entry, {"op", resource, "position"});
+        else r.fields(*entry, {"op", resource});
+        auto name = r.string(r.required(*entry, resource));
         if (name.empty()) r.fail(sound ? "sound name must not be empty" : "music name must not be empty");
         float amount = volume ? r.number(r.required(*entry, "volume"), "volume", 0, 1) :
+                       pitch ? r.number(r.required(*entry, "pitch"), "pitch", 0.125f, 8) :
+                       pan ? r.number(r.required(*entry, "pan"), "pan", -1, 1) :
                        seek ? r.number(r.required(*entry, "position"), "position", 0) : 0;
         Sound effect{};
         Music track{};
@@ -70,11 +90,15 @@ std::vector<Command> audioCommands(EvalState & state, PosIdx pos, Value & value,
             else if (op == "resumeSound") ResumeSound(effect);
             else if (op == "stopSound") StopSound(effect);
             else if (op == "setSoundVolume") SetSoundVolume(effect, amount);
+            else if (op == "setSoundPitch") SetSoundPitch(effect, amount);
+            else if (op == "setSoundPan") SetSoundPan(effect, nativePan(amount));
             else if (op == "playMusic") PlayMusicStream(track);
             else if (op == "pauseMusic") PauseMusicStream(track);
             else if (op == "resumeMusic") ResumeMusicStream(track);
             else if (op == "stopMusic") StopMusicStream(track);
             else if (op == "setMusicVolume") SetMusicVolume(track, amount);
+            else if (op == "setMusicPitch") SetMusicPitch(track, amount);
+            else if (op == "setMusicPan") SetMusicPan(track, nativePan(amount));
             else SeekMusicStream(track, amount);
         });
     }

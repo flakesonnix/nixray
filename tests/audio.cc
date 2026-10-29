@@ -159,6 +159,34 @@ extern "C" void PlayMusicStream(Music music)
     play(music);
 }
 
+extern "C" void SetSoundPitch(Sound sound, float pitch)
+{
+    trace("sound-pitch", pitch);
+    static const auto set = original<void (*)(Sound, float)>("SetSoundPitch");
+    set(sound, pitch);
+}
+
+extern "C" void SetSoundPan(Sound sound, float pan)
+{
+    trace("sound-pan", pan);
+    static const auto set = original<void (*)(Sound, float)>("SetSoundPan");
+    set(sound, pan);
+}
+
+extern "C" void SetMusicPitch(Music music, float pitch)
+{
+    trace("music-pitch", pitch);
+    static const auto set = original<void (*)(Music, float)>("SetMusicPitch");
+    set(music, pitch);
+}
+
+extern "C" void SetMusicPan(Music music, float pan)
+{
+    trace("music-pan", pan);
+    static const auto set = original<void (*)(Music, float)>("SetMusicPan");
+    set(music, pan);
+}
+
 extern "C" void PauseMusicStream(Music music)
 {
     trace("pause-music");

@@ -46,11 +46,15 @@ rec {
   resumeSound = sound: { op = "resumeSound"; inherit sound; };
   stopSound = sound: { op = "stopSound"; inherit sound; };
   setSoundVolume = args: args // { op = "setSoundVolume"; };
+  setSoundPitch = args: args // { op = "setSoundPitch"; };
+  setSoundPan = args: args // { op = "setSoundPan"; };
   playMusic = music: { op = "playMusic"; inherit music; };
   pauseMusic = music: { op = "pauseMusic"; inherit music; };
   resumeMusic = music: { op = "resumeMusic"; inherit music; };
   stopMusic = music: { op = "stopMusic"; inherit music; };
   setMusicVolume = args: args // { op = "setMusicVolume"; };
+  setMusicPitch = args: args // { op = "setMusicPitch"; };
+  setMusicPan = args: args // { op = "setMusicPan"; };
   seekMusic = args: args // { op = "seekMusic"; };
 
   clear = color: { op = "clear"; inherit color; };

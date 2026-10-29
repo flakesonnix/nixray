@@ -9,11 +9,15 @@ import wave
 ACTIONS = '''[
   { op = "playSound"; sound = "click"; }
   { op = "setSoundVolume"; sound = "click"; volume = 0.5; }
+  { op = "setSoundPitch"; sound = "click"; pitch = 2; }
+  { op = "setSoundPan"; sound = "click"; pan = -0.5; }
   { op = "pauseSound"; sound = "click"; }
   { op = "resumeSound"; sound = "click"; }
   { op = "stopSound"; sound = "click"; }
   { op = "playMusic"; music = "theme"; }
   { op = "setMusicVolume"; music = "theme"; volume = 0.25; }
+  { op = "setMusicPitch"; music = "theme"; pitch = 0.5; }
+  { op = "setMusicPan"; music = "theme"; pan = 0.5; }
   { op = "pauseMusic"; music = "theme"; }
   { op = "resumeMusic"; music = "theme"; }
   { op = "seekMusic"; music = "theme"; position = 2.5; }
@@ -78,7 +82,7 @@ class AudioCases:
         for flag in ("--pure-eval", "--restrict-eval"):
             with self.subTest(flag=flag):
                 self.assertEqual(self.evaluate(f"builtins.raylibValidateAudio {ACTIONS}", flags=[flag],
-                                               env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 11)
+                                               env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 15)
         self.assertEqual(self.evaluate("builtins.typeOf builtins.raylibValidateAudio"), "lambda")
 
     def test_audio_helpers(self):
@@ -86,16 +90,20 @@ class AudioCases:
         self.assertEqual(self.evaluate(f'''let ray = import {library}; in ray.validateAudio [
           (ray.playSound "click") (ray.pauseSound "click") (ray.resumeSound "click") (ray.stopSound "click")
           (ray.setSoundVolume {{ sound = "click"; volume = 0.5; }})
+          (ray.setSoundPitch {{ sound = "click"; pitch = 2; }})
+          (ray.setSoundPan {{ sound = "click"; pan = -0.5; }})
           (ray.playMusic "theme") (ray.pauseMusic "theme") (ray.resumeMusic "theme") (ray.stopMusic "theme")
           (ray.setMusicVolume {{ music = "theme"; volume = 0.5; }})
+          (ray.setMusicPitch {{ music = "theme"; pitch = 0.5; }})
+          (ray.setMusicPan {{ music = "theme"; pan = 0.5; }})
           (ray.seekMusic {{ music = "theme"; position = 1.25; }})
-        ]''', env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 11)
+        ]''', env={"DISPLAY": "", "WAYLAND_DISPLAY": ""}), 15)
 
     def test_audio_pure_validation_never_probes_device(self):
         for flag in ("--pure-eval", "--restrict-eval"):
             with self.subTest(flag=flag):
                 self.assertEqual(self._audio_evaluate(f"builtins.raylibValidateAudio {ACTIONS}", flags=[flag],
-                    env={"DISPLAY": "", "WAYLAND_DISPLAY": "", "NIXRAY_TEST_AUDIO_FAIL_INIT": "1"}), 11)
+                    env={"DISPLAY": "", "WAYLAND_DISPLAY": "", "NIXRAY_TEST_AUDIO_FAIL_INIT": "1"}), 15)
                 self.assertEqual(self._audio_trace(), [])
 
     def test_audio_bad_action_lists(self):
@@ -218,9 +226,12 @@ class AudioCases:
         self._audio_run(ACTIONS)
         events = self._audio_trace()
         controls = [event for event in events if event.startswith(
-            ("play-", "pause-", "resume-", "stop-", "sound-volume", "music-volume", "seek-"))]
-        self.assertEqual(controls, ["play-sound", "sound-volume 0.5", "pause-sound", "resume-sound", "stop-sound",
-                                    "play-music 0", "music-volume 0.25", "pause-music", "resume-music", "seek-music 2.5",
+            ("play-", "pause-", "resume-", "stop-", "sound-volume", "music-volume", "sound-pitch", "music-pitch",
+             "sound-pan", "music-pan", "seek-"))]
+        self.assertEqual(controls, ["play-sound", "sound-volume 0.5", "sound-pitch 2", "sound-pan -0.5",
+                                    "pause-sound", "resume-sound", "stop-sound",
+                                    "play-music 0", "music-volume 0.25", "music-pitch 0.5", "music-pan 0.5",
+                                    "pause-music", "resume-music", "seek-music 2.5",
                                     "stop-music"])
         self.assertLess(events.index("stop-music"), events.index("update-music 0"))
         self.assertLess(events.index("update-music 0"), events.index("frame"))
