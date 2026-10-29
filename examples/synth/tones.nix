@@ -29,6 +29,6 @@ runCommand "nixray-synth-tones" { } ''
     ${concat (map (note: ''
       printf '%b' '${header (builtins.floor (note.frequency * period + 0.5))}' > "$out/${waveform}-${note.name}.wav"
       cat ${waveform}.pcm >> "$out/${waveform}-${note.name}.wav"
-    '') instrument.notes)}
+    '') instrument.toneNotes)}
   '') instrument.waveforms)}
 ''

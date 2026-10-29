@@ -9,14 +9,9 @@ in
 ray.run {
   inherit hidden maxFrames;
   width = 920;
-  height = 520;
+  height = 620;
   title = "Nix synthesizer";
   audio = true;
-  assets.music = builtins.listToAttrs (builtins.concatMap (waveform:
-    map (note: {
-      name = "${waveform}-${note.name}";
-      value = { path = "${tones}/${waveform}-${note.name}.wav"; looping = true; };
-    }) instrument.notes
-  ) instrument.waveforms);
+  assets.music = instrument.musicAssets tones;
   state = instrument.initialState;
 } instrument.step

@@ -814,22 +814,36 @@ nix run . -- examples/synth.nix
 Hold **A W S E D F T G Y H U J K** to play a chromatic C4–C5 keyboard;
 multiple keys play chords. **Space** cycles triangle/square/saw, the **wheel**
 changes volume, and **Enter** silences all voices until held keys are released.
-Keys light up while held and fade through the release envelope.
+**Z/X** (or the on-screen buttons) select the C3–C4, C4–C5 or C5–C6 range.
+Click keys or hold the left mouse button and drag for glissando; black keys take
+priority where they overlap white keys. Mouse and keyboard can play together.
+Panic also blocks a held mouse gesture until the button is released.
+
+Drag the **Attack** (5–500 ms) and **Release** (20–1000 ms) sliders to adjust
+the envelopes, including while notes are sounding. Sliders retain their drag
+outside the track and clamp at each end; dragging a control cannot play keys.
+Keys light up while held and their level bars shrink during release.
 
 The instrument, oscillator math, PCM samples, envelopes and drawing are Nix.
 No Python, downloaded samples or external audio files are used. First launch
 builds a small WAV bank using the pinned nixpkgs; a build shell only writes the
 Nix-computed bytes. The same bank is available as `nix build .#synth-tones`,
 or can be supplied with `--arg tones ./my-tone-bank`.
+The expanded bank contains 111 WAVs: three waveforms at every semitone from C3
+through C6. Custom banks must supply these same filenames (e.g. `triangle-c3.wav`).
 The bank uses signed 16-bit PCM; this raylib version loads 8-bit WAV music
 without error but does not decode its samples during streaming.
 
 This demonstrates the existing audio API, not a real-time PCM callback: each
-note loops a generated periodic waveform through a music stream. Attack (20 ms)
-and release (150 ms) volume updates occur per graphical frame, not per sample;
-waveform changes restart held notes. Sample rates approximate equal temperament
+note loops a generated periodic waveform through a music stream. Attack (default
+20 ms) and release (default 150 ms) volume updates occur per graphical frame, not
+per sample; waveform/octave changes restart held notes. All old voices stop before
+new ones start, including the shared C at adjacent octave boundaries.
+Sample rates approximate equal temperament
 within 0.004 Hz, the square/saw waves are not band-limited, and output volume has
 headroom for all 13 voices. The example requires a working audio backend to hear.
+If keys light up but sound is absent, check the system mixer: the application
+stream is typically named `nix`, and its saved volume is separate from the wheel.
 
 ## Evaluation semantics and safety
 
