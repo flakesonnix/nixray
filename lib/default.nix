@@ -10,6 +10,10 @@ rec {
   checkCollisionCircleRec = builtins.raylibCheckCollisionCircleRec;
   checkCollisionPointRec = builtins.raylibCheckCollisionPointRec;
   checkCollisionPointCircle = builtins.raylibCheckCollisionPointCircle;
+  checkCollisionPointTriangle = builtins.raylibCheckCollisionPointTriangle;
+  checkCollisionPointPoly = builtins.raylibCheckCollisionPointPoly;
+  checkCollisionPointLine = builtins.raylibCheckCollisionPointLine;
+  checkCollisionCircleLine = builtins.raylibCheckCollisionCircleLine;
   checkCollisionLines = builtins.raylibCheckCollisionLines;
   getCollisionRec = builtins.raylibGetCollisionRec;
 

@@ -1,8 +1,10 @@
 #include "collision.hh"
 #include "reader.hh"
 
+#include <array>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace nixray {
 
@@ -54,11 +56,20 @@ struct Segment {
     Vector2 start, end;
 };
 
-Segment segment(const Reader & r, Value & value)
+Segment segment(const Reader & r, Value & value, bool allowThreshold = false)
 {
-    r.fields(value, {"x1", "y1", "x2", "y2"});
+    if (allowThreshold) r.fields(value, {"x1", "y1", "x2", "y2", "threshold"});
+    else r.fields(value, {"x1", "y1", "x2", "y2"});
     return {{r.number(r.required(value, "x1"), "x1"), r.number(r.required(value, "y1"), "y1")},
             {r.number(r.required(value, "x2"), "x2"), r.number(r.required(value, "y2"), "y2")}};
+}
+
+std::array<Vector2, 3> triangle(const Reader & r, Value & value)
+{
+    r.fields(value, {"x1", "y1", "x2", "y2", "x3", "y3"});
+    return {{{r.number(r.required(value, "x1"), "x1"), r.number(r.required(value, "y1"), "y1")},
+             {r.number(r.required(value, "x2"), "x2"), r.number(r.required(value, "y2"), "y2")},
+             {r.number(r.required(value, "x3"), "x3"), r.number(r.required(value, "y3"), "y3")}}};
 }
 
 void pointResult(EvalState & state, Vector2 point, Value & out)
@@ -147,6 +158,89 @@ void checkCollisionLines(EvalState & state, PosIdx pos, Value ** args, Value & o
         finiteArithmetic(r, {intersection.x, intersection.y});
         pointResult(state, intersection, out);
     }
+}
+
+void checkCollisionPointTriangle(EvalState & state, PosIdx pos, Value ** args, Value & out)
+{
+    Reader r(state, pos);
+    auto p = point(r, *args[0]);
+    auto [a, b, c] = triangle(r, *args[1]);
+    float ay = b.y - c.y, ax = c.x - b.x;
+    float by = a.x - c.x, bx = c.y - a.y;
+    float dx = p.x - c.x, dy = p.y - c.y;
+    float div = ay * (a.x - c.x) + ax * (a.y - c.y);
+    float numeratorA = ay * dx + ax * dy, numeratorB = bx * dx + by * dy;
+    finiteArithmetic(r, {ay, ax, by, bx, dx, dy, a.x - c.x, a.y - c.y, div, numeratorA, numeratorB});
+    // Native zero-area triangles cannot have three positive barycentric weights.
+    if (div == 0.0f) {
+        out.mkBool(false);
+        return;
+    }
+    float alpha = numeratorA / div, beta = numeratorB / div;
+    finiteArithmetic(r, {alpha, beta, 1.0f - alpha - beta});
+    out.mkBool(CheckCollisionPointTriangle(p, a, b, c));
+}
+
+void checkCollisionPointPoly(EvalState & state, PosIdx pos, Value ** args, Value & out)
+{
+    Reader r(state, pos);
+    auto p = point(r, *args[0]);
+    state.forceList(*args[1], pos, context);
+    if (args[1]->listSize() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        r.fail("polygon point count must fit a signed 32-bit integer");
+    std::vector<Vector2> points;
+    points.reserve(args[1]->listSize());
+    for (auto * entry : args[1]->listView()) points.push_back(point(r, *entry));
+    if (points.size() > 2) {
+        for (size_t i = 0, j = points.size() - 1; i < points.size(); j = i++) {
+            // Only straddling edges reach native division; horizontal edges do not.
+            if ((points[i].y > p.y) != (points[j].y > p.y)) {
+                float dx = points[j].x - points[i].x, dy = points[j].y - points[i].y;
+                float offset = p.y - points[i].y;
+                float product = dx * offset, crossing = product / dy;
+                finiteArithmetic(r, {dx, dy, offset, product, crossing, crossing + points[i].x});
+            }
+        }
+    }
+    out.mkBool(CheckCollisionPointPoly(p, points.data(), static_cast<int>(points.size())));
+}
+
+void checkCollisionPointLine(EvalState & state, PosIdx pos, Value ** args, Value & out)
+{
+    Reader r(state, pos);
+    auto p = point(r, *args[0]);
+    auto line = segment(r, *args[1], true);
+    int threshold = r.defaultInt(*args[1], "threshold", 1);
+    float dx = p.x - line.start.x, dy = p.y - line.start.y;
+    float lx = line.end.x - line.start.x, ly = line.end.y - line.start.y;
+    finiteArithmetic(r, {dx, dy, lx, ly, dx * ly - dy * lx,
+                         threshold * std::fmax(std::abs(lx), std::abs(ly))});
+    out.mkBool(CheckCollisionPointLine(p, line.start, line.end, threshold));
+}
+
+void checkCollisionCircleLine(EvalState & state, PosIdx pos, Value ** args, Value & out)
+{
+    Reader r(state, pos);
+    auto c = circle(r, *args[0]);
+    auto line = segment(r, *args[1]);
+    float dx = line.start.x - line.end.x, dy = line.start.y - line.end.y;
+    float span = std::abs(dx) + std::abs(dy);
+    finiteArithmetic(r, {dx, dy, span});
+    if (span <= std::numeric_limits<float>::epsilon()) finiteDistance(r, line.start, c.center);
+    else {
+        float lengthSquared = dx * dx + dy * dy;
+        float cx = c.center.x - line.start.x, cy = c.center.y - line.start.y;
+        float numerator = cx * (line.end.x - line.start.x) + cy * (line.end.y - line.start.y);
+        finiteArithmetic(r, {lengthSquared, cx, cy, numerator});
+        float projection = numerator / lengthSquared;
+        finiteArithmetic(r, {projection});
+        if (projection > 1.0f) projection = 1.0f;
+        else if (projection < 0.0f) projection = 0.0f;
+        float closestX = line.start.x - projection * dx, closestY = line.start.y - projection * dy;
+        float distanceX = closestX - c.center.x, distanceY = closestY - c.center.y;
+        finiteArithmetic(r, {closestX, closestY, distanceX, distanceY, distanceX * distanceX + distanceY * distanceY});
+    }
+    out.mkBool(CheckCollisionCircleLine(c.center, c.radius, line.start, line.end));
 }
 
 void getCollisionRec(EvalState & state, PosIdx pos, Value ** args, Value & out)

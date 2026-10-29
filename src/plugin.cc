@@ -138,6 +138,43 @@ RegisterPrimOp collisionLinesOp({
     .experimentalFeature = std::nullopt,
 });
 
+RegisterPrimOp collisionPointTriangleOp({
+    .name = "__raylibCheckCollisionPointTriangle",
+    .args = {"point", "triangle"},
+    .arity = 2,
+    .doc = "Pick strictly inside a { x1; y1; x2; y2; x3; y3; } triangle. Edges and zero-area triangles are false. Pure.",
+    .impl = checkCollisionPointTriangle,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionPointPolyOp({
+    .name = "__raylibCheckCollisionPointPoly",
+    .args = {"point", "points"},
+    .arity = 2,
+    .doc = "Pick a polygon given an ordered list of { x; y; } vertices, closed implicitly. Native even-odd edge rules; pure.",
+    .impl = checkCollisionPointPoly,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionPointLineOp({
+    .name = "__raylibCheckCollisionPointLine",
+    .args = {"point", "line"},
+    .arity = 2,
+    .doc = "Pick a { x1; y1; x2; y2; threshold ? 1; } segment using raylib's strict cross-product tolerance. "
+           "Threshold is a nonnegative integer. Zero threshold/length return false. Pure.",
+    .impl = checkCollisionPointLine,
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp collisionCircleLineOp({
+    .name = "__raylibCheckCollisionCircleLine",
+    .args = {"circle", "line"},
+    .arity = 2,
+    .doc = "Check a { x; y; radius; } circle against a { x1; y1; x2; y2; } segment, including tangency/endpoints. Pure.",
+    .impl = checkCollisionCircleLine,
+    .experimentalFeature = std::nullopt,
+});
+
 RegisterPrimOp collisionRecOp({
     .name = "__raylibGetCollisionRec",
     .args = {"rectangle1", "rectangle2"},

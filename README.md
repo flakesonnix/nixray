@@ -77,7 +77,9 @@ Loading the plugin registers:
   no display or window required.
 - `builtins.raylibCheckCollisionRecs`, `raylibCheckCollisionCircles`,
   `raylibCheckCollisionCircleRec`, `raylibCheckCollisionPointRec`,
-  `raylibCheckCollisionPointCircle`, `raylibCheckCollisionLines` and
+  `raylibCheckCollisionPointCircle`, `raylibCheckCollisionPointTriangle`,
+  `raylibCheckCollisionPointPoly`, `raylibCheckCollisionPointLine`,
+  `raylibCheckCollisionCircleLine`, `raylibCheckCollisionLines` and
   `raylibGetCollisionRec`: pure geometry queries; see collision and picking below.
 
 `builtins.raylib` is a native plugin-provided builtin, not a modification to
@@ -403,7 +405,7 @@ wheel changes source alpha; labels outside each blend scope retain normal alpha.
 Collision queries are pure native raylib calls, available without a display,
 including during pure/restricted evaluation. The helpers below alias
 `builtins.raylibCheckCollisionRecs` etc.; no window or assets are needed.
-Each function takes two geometry sets:
+Each function takes two arguments: geometry sets, or an ordered point list for polygons:
 
 | Helper | First argument | Second argument | Result |
 | --- | --- | --- | --- |
@@ -412,6 +414,10 @@ Each function takes two geometry sets:
 | `ray.checkCollisionCircleRec` | Circle | Rectangle | Boolean |
 | `ray.checkCollisionPointRec` | Point | Rectangle | Boolean |
 | `ray.checkCollisionPointCircle` | Point | Circle | Boolean |
+| `ray.checkCollisionPointTriangle` | Point | Triangle | Boolean |
+| `ray.checkCollisionPointPoly` | Point | List of points | Boolean |
+| `ray.checkCollisionPointLine` | Point | Segment plus optional `threshold` | Boolean |
+| `ray.checkCollisionCircleLine` | Circle | Segment | Boolean |
 | `ray.checkCollisionLines` | Segment | Segment | `{ x; y; }` intersection, or `null` |
 | `ray.getCollisionRec` | Rectangle | Rectangle | Overlapping rectangle |
 
@@ -421,6 +427,12 @@ Geometry sets contain only these required fields (no `op`/`color`):
 - Rectangle: `{ x; y; width; height; }`
 - Circle: `{ x; y; radius; }`
 - Segment: `{ x1; y1; x2; y2; }`
+- Triangle: `{ x1; y1; x2; y2; x3; y3; }`
+- Polygon: `[ { x; y; } ... ]`, ordered vertices, implicitly closed. Concave
+  polygons and a repeated closing vertex are accepted. All vertices are validated;
+  lists with fewer than three vertices return false.
+- Point–line picking alone allows `threshold ? 1` in its segment set; it must
+  be a nonnegative signed 32-bit integer. Other segment queries still reject it.
 
 All fields accept finite integers/floats in raylib's float range; widths,
 heights and radii must be nonnegative. Unknown/missing fields, wrong types,
@@ -442,6 +454,19 @@ Boundary behavior follows raylib:
 - Segment endpoints count for nonparallel intersections. Parallel, collinear
   (even overlapping) and zero-length segments return `null`. Raylib treats a
   determinant smaller than float epsilon (about `1.19e-7`) as parallel.
+- Triangle picking is strictly interior: edges/vertices and zero-area triangles
+  return false, with either winding.
+- Polygon picking uses native even–odd ray casting. Boundaries are not uniformly
+  included or excluded: for an axis-aligned rectangle, left/top count and
+  right/bottom do not. Self-intersections retain the native even–odd rule.
+- Point–line picking uses a **strict cross-product heuristic**, not Euclidean
+  distance: `abs(cross(point - start, end - start)) < threshold * max(abs(dx), abs(dy))`,
+  followed by an inclusive dominant-axis segment bound. Threshold zero and
+  zero-length segments always return false. Threshold uses the geometry's own
+  coordinate units, not automatically screen pixels.
+- Circle–line picking includes tangency and endpoints, clamping projection to the
+  segment. Segments with `abs(dx) + abs(dy) <= float epsilon` are treated as their
+  first endpoint, retaining native near-zero-length behavior.
 
 Convert window mouse coordinates before querying world-space shapes:
 
@@ -450,12 +475,16 @@ worldMouse = ray.screenToWorld2D camera { x = frame.mouseX; y = frame.mouseY; };
 hovered = ray.checkCollisionPointRec worldMouse {
   x = 36; y = 48; width = 120; height = 80;
 };
+nearLine = ray.checkCollisionPointLine worldMouse {
+  x1 = 16; y1 = 88; x2 = 360; y2 = 88; threshold = 3;
+};
 ```
 
 Queries do not automatically apply cameras, clipping or render-target transforms;
 put both shapes in the same coordinate system yourself. Try
 `nix run . -- examples/collision.nix` for camera-aware mouse picking, rectangle
-overlap highlighting, circle contacts and a segment-intersection marker.
+overlap highlighting, circle contacts, triangle/concave-polygon picking,
+line-hover highlighting and a segment-intersection marker.
 
 ### Render textures
 

@@ -5,6 +5,9 @@ let
   rectangle = { x = 36; y = 48; width = 120; height = 80; };
   circle = { x = 260; y = 88; radius = 40; };
   baseline = { x1 = 16; y1 = 88; x2 = 360; y2 = 88; };
+  triangle = { x1 = 30; y1 = 150; x2 = 100; y2 = 150; x3 = 65; y3 = 195; };
+  polygon = [ { x = 270; y = 145; } { x = 365; y = 145; } { x = 335; y = 165; }
+              { x = 365; y = 195; } { x = 270; y = 195; } ];
 in
 ray.run {
   inherit hidden maxFrames;
@@ -22,14 +25,19 @@ ray.run {
     circleRectangleHit = ray.checkCollisionCircleRec cursor rectangle;
     hoverRectangle = ray.checkCollisionPointRec mouse rectangle;
     hoverCircle = ray.checkCollisionPointCircle mouse circle;
+    hoverTriangle = ray.checkCollisionPointTriangle mouse triangle;
+    hoverPolygon = ray.checkCollisionPointPoly mouse polygon;
+    hoverLine = ray.checkCollisionPointLine mouse (baseline // { threshold = 3; });
+    circleLineHit = ray.checkCollisionCircleLine cursor baseline;
     overlap = ray.getCollisionRec probe rectangle;
     intersection = ray.checkCollisionLines baseline pointerLine;
   in {
-    state = { inherit rectangleHit circleHit circleRectangleHit hoverRectangle hoverCircle overlap intersection; };
+    state = { inherit rectangleHit circleHit circleRectangleHit circleLineHit hoverRectangle hoverCircle
+                      hoverTriangle hoverPolygon hoverLine overlap intersection; };
     commands = [
       (ray.clear ray.colors.raywhite)
       (ray.text {
-        text = "Move mouse: picking, overlap and segment intersection";
+        text = "Move mouse: rectangles, circles, triangles, polygons, lines";
         x = 16; y = 16; size = 18; color = ray.colors.black;
       })
       (ray.camera2D {
@@ -37,7 +45,8 @@ ray.run {
         commands = [
           (ray.rectangle (rectangle // { color = if hoverRectangle then ray.colors.orange else ray.colors.skyblue; }))
           (ray.circle (circle // { color = if hoverCircle then ray.colors.orange else ray.colors.purple; }))
-          (ray.line (baseline // { color = ray.colors.gray; }))
+          (ray.triangle (triangle // { color = if hoverTriangle then ray.colors.orange else ray.colors.green; }))
+          (ray.line (baseline // { color = if hoverLine then ray.colors.orange else ray.colors.gray; }))
           (ray.line (pointerLine // { color = ray.colors.gray; }))
           (ray.rectangle {
             x = builtins.floor overlap.x; y = builtins.floor overlap.y;
@@ -46,9 +55,16 @@ ray.run {
           })
           (ray.rectangleLines (probe // { color = if rectangleHit then ray.colors.red else ray.colors.black; }))
           (ray.circleLines (cursor // {
-            color = if circleHit || circleRectangleHit then ray.colors.red else ray.colors.black;
+            color = if circleHit || circleRectangleHit || circleLineHit then ray.colors.red else ray.colors.black;
           }))
-        ] ++ (if intersection == null then [] else [
+        ] ++ builtins.genList (i:
+          let
+            a = builtins.elemAt polygon i;
+            b = builtins.elemAt polygon (if i + 1 == builtins.length polygon then 0 else i + 1);
+          in ray.line { x1 = a.x; y1 = a.y; x2 = b.x; y2 = b.y;
+            color = if hoverPolygon then ray.colors.orange else ray.colors.blue;
+          }
+        ) (builtins.length polygon) ++ (if intersection == null then [] else [
           (ray.circle {
             x = builtins.floor intersection.x; y = builtins.floor intersection.y;
             radius = 4; color = ray.colors.green;

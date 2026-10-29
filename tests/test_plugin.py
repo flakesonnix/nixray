@@ -18,6 +18,7 @@ from clip_cases import ClipCases
 from camera_cases import CameraCases
 from render_cases import RenderCases
 from collision_cases import CollisionCases
+from collision_extra_cases import CollisionExtraCases
 from blend_cases import BlendCases
 from shader_cases import ShaderCases
 from audio_cases import AudioCases
@@ -39,7 +40,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, PixelCases, InputCases, TextCases, ShapeCases, ClipCases, CameraCases, RenderCases,
-    CollisionCases, BlendCases, ShaderCases, AudioCases, AudioControlCases, SynthCases, unittest.TestCase,
+    CollisionCases, CollisionExtraCases, BlendCases, ShaderCases, AudioCases, AudioControlCases, SynthCases, unittest.TestCase,
 ):
     capture_library = options.capture_library
     input_library = options.input_library

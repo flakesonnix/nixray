@@ -309,6 +309,7 @@ class CollisionCases:
         example = Path(__file__).resolve().parent.parent / "examples/collision.nix"
         result = self.evaluate(f"import {example} {{ hidden = true; maxFrames = 2; }}")
         self.assertEqual(result["frames"], 2)
-        for name in ("rectangleHit", "circleHit", "circleRectangleHit", "hoverRectangle", "hoverCircle"):
+        for name in ("rectangleHit", "circleHit", "circleRectangleHit", "circleLineHit", "hoverRectangle", "hoverCircle",
+                     "hoverTriangle", "hoverPolygon", "hoverLine"):
             self.assertIsInstance(result["state"][name], bool)
         self.assertEqual(set(result["state"]["overlap"]), {"x", "y", "width", "height"})
