@@ -206,6 +206,10 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `triangle`, `triangleLines` | `x1`, `y1`, `x2`, `y2`, `x3`, `y3`, `color` |
 | `line` | `x1`, `y1`, `x2`, `y2`, `color` |
 | `lineEx` | `x1`, `y1`, `x2`, `y2`, `thickness`, `color` |
+| `poly`, `polyLines` | `x`, `y`, `sides`, `radius`, `color` |
+| `polyLinesEx` | `x`, `y`, `sides`, `radius`, `thickness`, `color` |
+| `lineBezier` | `x1`, `y1`, `x2`, `y2`, `thickness`, `color` |
+| `splineLinear`, `splineBasis`, `splineCatmullRom`, `splineBezierQuadratic`, `splineBezierCubic` | `points = [ { x; y; } ... ]`, `thickness`, `color` |
 | `pixel` | `x`, `y`, `color` |
 | `fps` | `x`, `y` |
 
@@ -303,6 +307,65 @@ draw one-pixel contours **and radial caps**, including raylib's full-turn seam.
 Try `nix run . -- examples/drawing.nix` for all nine commands. The example rotates
 the arcs; holding Space switches their span from 270 to 90 degrees. Matching Nix
 constructors, e.g. `ray.ring { ... }`, use the attribute sets above.
+
+#### Regular polygons and curves
+
+`poly` fills a regular polygon centered at `(x, y)`; `polyLines` draws its
+one-pixel contour, and `polyLinesEx` draws a thick native contour inside the
+outer polygon. `sides` is an integer in `3..4096`; `radius` and `thickness` are
+finite nonnegative numbers. A thickness at least as large as the radius fills
+the polygon instead of inverting its inner contour. Zero radius or zero thick
+outline thickness draws nothing, after full validation. Optional `rotation`
+defaults to `0`: its first vertex points right, and positive degrees turn
+clockwise. Finite rotations are normalized before drawing.
+
+`lineBezier` is raylib's **eased connector**, not a control-point Bézier:
+x advances linearly while y uses cubic ease-in/out between the two endpoints.
+Use the quadratic/cubic spline commands for explicit Bézier control points.
+
+```nix
+ray.splineBezierCubic {
+  points = [ { x = 24; y = 180; } { x = 80; y = 24; }
+             { x = 240; y = 24; } { x = 300; y = 180; } ];
+  thickness = 5; color = ray.colors.skyblue;
+  segments = 48; # optional, per polynomial span
+}
+```
+
+All point coordinates are signed 32-bit **integers**, matching other drawing
+positions; thickness accepts finite nonnegative integers/floats. Point sets
+allow exactly `x` and `y`. Lists contain at most 4096 points:
+
+| Command | Point-list rules and path |
+| --- | --- |
+| `splineLinear` | At least 2; open polyline through every point |
+| `splineBasis` | At least 4; uniform cubic B-spline over overlapping groups of 4; generally does not pass through control points |
+| `splineCatmullRom` | At least 4; overlapping groups of 4 interpolate the middle two; first/last points control tangents, not path endpoints |
+| `splineBezierQuadratic` | `2n + 1` points, `n >= 1`; start, control, end, control, end, ... |
+| `splineBezierCubic` | `3n + 1` points, `n >= 1`; start, control, control, end, control, control, end, ... |
+
+Incomplete Bézier spans are errors, not silently ignored. Repeat the first and
+last Catmull-Rom knots if those knots should also be path endpoints. Splines
+remain open: no implicit closing segment, padding or arbitrary-polygon fill.
+
+`lineBezier` and nonlinear splines accept optional `segments`, default `24`, an
+integer in `1..4096` per span. The total is bounded to **65536 sampled intervals
+per command**, even for zero thickness or constant controls. Large point lists
+may therefore need a smaller segment count. `splineLinear` has no `segments`.
+
+Curves use the standard interpolation polynomials with double intermediates,
+then native float vertices. Strokes use butt caps and shared miter cross-sections
+limited to one full thickness from the centerline (twice the half-width), rather
+than native spline caps/unsafe zero-length normal divisions. Coincident samples
+are skipped, and forward collinear subdivisions merge. Exact retraces meet as
+separate butt-capped segments; self-intersections/retraces can blend more than
+once. Zero thickness and fully collapsed paths draw nothing, after validation.
+These are sampled strokes, not analytic or antialiased curves.
+
+All nine commands honor clips, cameras, blends, shaders and render textures.
+`ray.validate` performs the same point/count/work-limit checks without opening
+a window. Try `nix run . -- examples/curves.nix`: the mouse wheel adjusts stroke
+thickness; Space toggles control guides. The entire demonstration is plain Nix.
 
 ### Clipping
 

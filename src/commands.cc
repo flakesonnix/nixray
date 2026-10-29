@@ -4,6 +4,7 @@
 #include "texture.hh"
 #include "text.hh"
 #include "shapes.hh"
+#include "curves.hh"
 #include "clip.hh"
 #include "camera.hh"
 #include "blend.hh"
@@ -91,11 +92,14 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             result.emplace_back(texturePatchCommand(state, pos, *entry, assets, activeTexture));
         } else if (op == "text") {
             result.emplace_back(textCommand(state, pos, *entry, assets));
+        } else if (op == "lineBezier" || op == "splineLinear" || op == "splineBasis" || op == "splineCatmullRom" ||
+                   op == "splineBezierQuadratic" || op == "splineBezierCubic") {
+            result.emplace_back(curveCommand(state, pos, *entry, op));
         } else if (op == "triangle" || op == "triangleLines" || op == "ellipse" || op == "ellipseLines" ||
                    op == "rectangleRounded" || op == "rectangleRoundedLines" || op == "lineEx" ||
                    op == "rectangleGradientV" || op == "rectangleGradientH" || op == "rectangleGradientEx" ||
                    op == "circleGradient" || op == "circleSector" || op == "circleSectorLines" ||
-                   op == "ring" || op == "ringLines") {
+                   op == "ring" || op == "ringLines" || op == "poly" || op == "polyLines" || op == "polyLinesEx") {
             result.emplace_back(shapeCommand(state, pos, *entry, op));
         } else if (op == "rectangle" || op == "rectangleLines") {
             r.fields(*entry, {"op", "x", "y", "width", "height", "color"});

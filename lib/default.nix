@@ -90,6 +90,15 @@ rec {
   triangleLines = args: args // { op = "triangleLines"; };
   line = args: args // { op = "line"; };
   lineEx = args: args // { op = "lineEx"; };
+  poly = args: args // { op = "poly"; };
+  polyLines = args: args // { op = "polyLines"; };
+  polyLinesEx = args: args // { op = "polyLinesEx"; };
+  lineBezier = args: args // { op = "lineBezier"; };
+  splineLinear = args: args // { op = "splineLinear"; };
+  splineBasis = args: args // { op = "splineBasis"; };
+  splineCatmullRom = args: args // { op = "splineCatmullRom"; };
+  splineBezierQuadratic = args: args // { op = "splineBezierQuadratic"; };
+  splineBezierCubic = args: args // { op = "splineBezierCubic"; };
   pixel = args: args // { op = "pixel"; };
   fps = x: y: { op = "fps"; inherit x y; };
 }

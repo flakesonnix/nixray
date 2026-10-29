@@ -16,6 +16,7 @@ add_library(nixray MODULE
     src/texture.cc
     src/text.cc
     src/shapes.cc
+    src/curves.cc
     src/clip.cc
     src/blend.cc
     src/camera.cc

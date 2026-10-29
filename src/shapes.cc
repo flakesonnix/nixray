@@ -52,6 +52,26 @@ Arc arcSpec(const Reader & r, Value & value, float radius)
 Command shapeCommand(EvalState & state, PosIdx pos, Value & value, const std::string & op)
 {
     Reader r(state, pos);
+    if (op == "poly" || op == "polyLines" || op == "polyLinesEx") {
+        bool thick = op == "polyLinesEx";
+        if (thick) r.fields(value, {"op", "x", "y", "sides", "radius", "rotation", "thickness", "color"});
+        else r.fields(value, {"op", "x", "y", "sides", "radius", "rotation", "color"});
+        Vector2 center{static_cast<float>(r.integerAttr(value, "x")), static_cast<float>(r.integerAttr(value, "y"))};
+        int sides = r.integer(r.required(value, "sides"), "sides", 3, maxSegments);
+        float radius = r.number(r.required(value, "radius"), "radius", 0);
+        double angle = 0;
+        if (auto * rotation = r.optional(value, "rotation")) angle = r.numberDouble(*rotation, "rotation");
+        float rotation = static_cast<float>(std::fmod(angle, 360.0));
+        float thickness = thick ? r.number(r.required(value, "thickness"), "thickness", 0) : 0;
+        auto color = r.color(r.required(value, "color"));
+        return [=] {
+            if (radius == 0 || (thick && thickness == 0)) return;
+            // Do not let a thick native contour invert its inner polygon.
+            if (op == "poly" || (thick && thickness >= radius)) DrawPoly(center, sides, radius, rotation, color);
+            else if (thick) DrawPolyLinesEx(center, sides, radius, rotation, thickness, color);
+            else DrawPolyLines(center, sides, radius, rotation, color);
+        };
+    }
     if (op == "lineEx") {
         r.fields(value, {"op", "x1", "y1", "x2", "y2", "thickness", "color"});
         Vector2 start{static_cast<float>(r.integerAttr(value, "x1")), static_cast<float>(r.integerAttr(value, "y1"))};
