@@ -1,7 +1,10 @@
 """Nix synth logic, generated PCM, and native playback; no Python in the example."""
 
+from array import array
+import math
 import os
 from pathlib import Path
+import struct
 import wave
 
 
@@ -134,16 +137,45 @@ class SynthCases:
             for note in notes:
                 with self.subTest(waveform=waveform, note=note["name"]):
                     with wave.open(str(bank / f'{waveform}-{note["name"]}.wav'), "rb") as source:
-                        self.assertEqual((source.getnchannels(), source.getsampwidth(), source.getnframes()), (1, 1, 32768))
+                        self.assertEqual((source.getnchannels(), source.getsampwidth(), source.getnframes()), (1, 2, 32768))
                         self.assertLess(abs(source.getframerate() / 128 - note["frequency"]), 0.004)
                         pcm = source.readframes(source.getnframes())
-                    self.assertEqual(pcm, pcm[:128] * 256)
-                    self.assertGreaterEqual(min(pcm), 32)
-                    self.assertLessEqual(max(pcm), 224)
-                    self.assertGreater(max(pcm) - min(pcm), 180)
-                    self.assertAlmostEqual(sum(pcm[:128]) / 128, 128, delta=1)
-                    shapes.add(pcm[:128])
+                    self.assertEqual(pcm, pcm[:256] * 256)
+                    samples = struct.unpack("<32768h", pcm)
+                    self.assertGreaterEqual(min(samples), -24576)
+                    self.assertLessEqual(max(samples), 24576)
+                    self.assertGreater(max(samples) - min(samples), 46000)
+                    self.assertAlmostEqual(sum(samples[:128]) / 128, 0, delta=256)
+                    shapes.add(pcm[:256])
         self.assertEqual(len(shapes), 3)
+
+    def test_synth_native_mixer_contains_oscillating_audio(self):
+        bank = self._synth_bank()
+        capture = self.asset_directory / "synth-mix.f32"
+        for waveform in ("triangle", "square", "saw"):
+            with self.subTest(waveform=waveform):
+                capture.unlink(missing_ok=True)
+                self._audio_evaluate(f'''let synth = import {ROOT / 'examples/synth/instrument.nix'};
+                in builtins.raylib {{
+                  width = 32; height = 32; hidden = true; fps = 60; maxFrames = 45; audio = true;
+                  assets.music."{waveform}-c4" = {{ path = "{bank}/{waveform}-c4.wav"; looping = true; }};
+                  state = synth.initialState // {{ waveform = "{waveform}"; }};
+                }} (frame: synth.step (frame // {{ keysDown = [65]; keysPressed = []; mouseWheelY = 0.0; }}))''',
+                    env={"NIXRAY_TEST_AUDIO_CAPTURE": str(capture)})
+                samples = array("f", capture.read_bytes())
+                self.assertGreater(len(samples), 10000, "no sustained mixer output")
+                self.assertTrue(all(math.isfinite(value) for value in samples))
+                channel = samples[::2]
+                # Loading/playing can succeed while an unsupported WAV yields DC.
+                # Require both polarities, AC energy, and many complete cycles.
+                self.assertLess(min(channel), -0.005)
+                self.assertGreater(max(channel), 0.005)
+                self.assertLess(max(abs(value) for value in channel), 0.05)
+                mean = sum(channel) / len(channel)
+                rms = math.sqrt(sum((value - mean) ** 2 for value in channel) / len(channel))
+                self.assertGreater(rms, 0.005)
+                crossings = sum(a < 0 <= b for a, b in zip(channel, channel[1:]))
+                self.assertGreater(crossings, 80)
 
     def test_synth_example_native_bank_and_cleanup(self):
         bank = self._synth_bank()

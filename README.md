@@ -821,6 +821,8 @@ No Python, downloaded samples or external audio files are used. First launch
 builds a small WAV bank using the pinned nixpkgs; a build shell only writes the
 Nix-computed bytes. The same bank is available as `nix build .#synth-tones`,
 or can be supplied with `--arg tones ./my-tone-bank`.
+The bank uses signed 16-bit PCM; this raylib version loads 8-bit WAV music
+without error but does not decode its samples during streaming.
 
 This demonstrates the existing audio API, not a real-time PCM callback: each
 note loops a generated periodic waveform through a music stream. Attack (20 ms)
@@ -895,8 +897,10 @@ devices or claim to cover OS event delivery or IME integration. Audio tests use
 silent WAV fixtures and isolated backend settings (silent ALSA/default-null
 fallback), with a tracing/failure-injection hook around real native decoding,
 playback and streaming. They check action ordering, playback snapshots and device/
-resource cleanup, not acoustics or physical speaker output. No test hook is
-installed with the plugin.
+resource cleanup, not acoustics or physical speaker output. Synth regressions
+also capture the real stereo float mixer output and check AC energy and waveform
+cycles, rather than accepting successful playback calls as evidence of sound.
+No test hook is installed with the plugin.
 
 `.github/workflows/checks.yml` runs `nix flake check` on Ubuntu 24.04 for pushes,
 pull requests, and manual runs. Actions are pinned to commit hashes, with

@@ -1,11 +1,23 @@
-// Test-only tracing/failure injection; native decoding and playback still run.
+// Test-only tracing/failure injection and mixed-output capture; native audio runs.
 #include <raylib.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <limits>
 
 namespace {
+
+std::FILE * mixedOutput = nullptr;
+unsigned capturedFrames = 0;
+
+void captureMix(void * buffer, unsigned frames)
+{
+    // Raylib's device mixer supplies stereo float32 frames. Bound test output.
+    auto count = std::min(frames, 48000U * 5U - capturedFrames);
+    std::fwrite(buffer, sizeof(float) * 2, count, mixedOutput);
+    capturedFrames += count;
+}
 
 template<typename Function>
 Function original(const char * name)
@@ -42,6 +54,13 @@ extern "C" void InitAudioDevice()
     if (std::getenv("NIXRAY_TEST_AUDIO_FAIL_INIT")) return;
     static const auto initialize = original<void (*)()>("InitAudioDevice");
     initialize();
+    static const auto ready = original<bool (*)()>("IsAudioDeviceReady");
+    if (auto * path = std::getenv("NIXRAY_TEST_AUDIO_CAPTURE"); path && ready()) {
+        mixedOutput = std::fopen(path, "wb");
+        if (!mixedOutput) std::abort();
+        capturedFrames = 0;
+        AttachAudioMixedProcessor(captureMix);
+    }
 }
 
 extern "C" bool IsAudioDeviceReady()
@@ -55,6 +74,12 @@ extern "C" bool IsAudioDeviceReady()
 extern "C" void CloseAudioDevice()
 {
     trace("device-close");
+    if (mixedOutput) {
+        // Detach holds the mixer lock, so the callback has finished before close.
+        DetachAudioMixedProcessor(captureMix);
+        std::fclose(mixedOutput);
+        mixedOutput = nullptr;
+    }
     static const auto close = original<void (*)()>("CloseAudioDevice");
     close();
 }
