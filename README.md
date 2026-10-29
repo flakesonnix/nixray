@@ -125,6 +125,7 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `hidden` | `false` | Hidden window, useful for headless tests |
 | `resizable` | `false` | Allow window resizing |
 | `audio` | `false` | Opt in to an audio device, sound effects and streamed music |
+| `gestures` | All gesture codes | List of enabled `ray.gestures` integer codes; `[]` disables detection |
 | `state` | `null` | Initial application state |
 | `assets` | `{}` | Named `textures`, `fonts`, `renderTextures`, `shaders`, `sounds` and `music` maps |
 
@@ -142,6 +143,11 @@ The callback receives a fresh attribute set each frame:
   keysReleased = [];                 # Released during this frame
   mouseDown = []; mousePressed = []; # Lists of raylib mouse button codes
   mouseReleased = [];
+  gamepads = [];                     # Connected gamepad snapshots, ordered by slot ID
+  touches = [];                      # Current contacts: { id; x; y; }
+  gesture = { detected = 0; holdDuration = 0.0;
+    dragVector = { x = 0.0; y = 0.0; }; dragAngle = 0.0;
+    pinchVector = { x = 0.0; y = 0.0; }; pinchAngle = 0.0; };
   audio = { enabled = false; sounds = {}; music = {}; }; # Playback snapshot
   state = null;                     # Previous frame's application state
 }
@@ -174,6 +180,90 @@ Try `nix run . -- examples/input.nix`: type to append text, press Enter to clear
 it, scroll to resize the circle, and release A or the left mouse button to
 change its color. The example deliberately uses the default font, so some
 Unicode characters may be retained in state but displayed as fallback glyphs.
+
+#### Gamepads, touch and gestures
+
+`frame.gamepads` contains only connected controllers, in ascending native slot
+order. Slots `0..3` are polled, so list positions are **not** controller IDs:
+
+```nix
+{
+  id = 0; name = "Controller name";
+  axes = [ 0.0 0.0 0.0 0.0 (-1.0) (-1.0) ];
+  buttonsDown = []; buttonsPressed = []; buttonsReleased = [];
+}
+```
+
+Button lists contain native integer codes `0..31`; `ray.gamepadButtons` names
+the public raylib codes (`leftFaceUp/Right/Down/Left`,
+`rightFaceUp/Right/Down/Left`, `leftTrigger1/2`, `rightTrigger1/2`,
+`middleLeft`, `middle`, `middleRight`, `leftThumb`, `rightThumb`, `unknown`).
+Pressed/released are native per-frame edges, not inferred by the plugin.
+Disconnecting removes the entry; it does not synthesize release events. A slot
+may later be reused for another device, and is not a persistent hardware identity.
+
+`axes` contains the reported axis values in native index order, capped at eight
+values per pad. `ray.gamepadAxes` names `leftX`, `leftY`, `rightX`, `rightY`,
+`leftTrigger`, `rightTrigger` (indices `0..5`). Stick values are normally in
+`-1..1`, and native triggers normally run from **-1 released to +1 pressed**;
+mappings and support depend on the device/backend. There is no additional
+deadzone, remapping or finite-value clamp. A null native name becomes `""`.
+
+Use the plain Nix helpers for hotplug-safe access:
+
+```nix
+let
+  pad = ray.gamepad frame 0; # Snapshot with ID 0, or null
+  x = ray.gamepadAxis pad ray.gamepadAxes.leftX; # 0 if absent/out of bounds
+  fire = ray.gamepadButtonPressed pad ray.gamepadButtons.rightFaceDown;
+in ...
+```
+
+`ray.gamepadButtonDown`, `ray.gamepadButtonPressed` and
+`ray.gamepadButtonReleased` return false for `null`. Use a fresh lookup each
+frame so a disconnected pad does not leave stale held buttons in your state.
+
+`frame.touches` contains up to ten `{ id; x; y; }` contacts in **native order**.
+Coordinates are floats in logical screen pixels; IDs remain native integers,
+including an unsupported `-1` ID if a backend supplies one. Indices may change
+as contacts enter/leave: compare IDs across snapshots instead. No synthetic
+pressed/released events or mouse fallback contacts are added by the plugin.
+Actual touch support and mouse/touch emulation depend on the raylib backend.
+
+`frame.gesture.detected` is the latest native gesture code. `ray.gestures`
+provides `none`, `tap`, `doubleTap`, `hold`, `drag`, `swipeRight`, `swipeLeft`,
+`swipeUp`, `swipeDown`, `pinchIn` and `pinchOut`.
+`ray.gestureDetected frame ray.gestures.tap` compares the snapshot code, just
+like native `IsGestureDetected`; `none` matches code zero. This is not a queue
+or a synthetic pressed-edge API: holds/drags can remain detected across frames.
+
+`holdDuration` uses seconds. The drag/pinch vectors preserve raylib's normalized
+screen-coordinate units, **not pixels or per-frame deltas**: drag is displacement
+within the gesture, and pinch is the separation vector between contacts, not a
+zoom factor. Angles preserve native degrees: 0/360 points right, and positive
+angles turn toward up, unlike clockwise drawing rotations. Metrics can retain
+native cached values between gestures (or windows); gate their use on `detected`.
+
+Optional config `gestures = [ ray.gestures.tap ray.gestures.drag ];` filters the
+detected code using native `SetGesturesEnabled`. An empty list makes detection
+zero; native metric getters can still return cached/ongoing values. Duplicates
+are harmless and `none` adds no flag. Unknown codes, combined bitmasks and
+non-integer entries are errors. The default enables all ten gestures, and flags
+are reset explicitly for each window, including after a prior disabled run.
+Desktop builds with mouse gestures enabled can recognize single-pointer gestures
+without a touchscreen; multi-touch pinch support is backend-dependent.
+
+All device fields are eagerly copied once per callback frame, even if Nix never
+forces them. Retaining a snapshot or a closure over it never polls a later frame
+or accesses a closed window. Native counts are clamped to the limits above
+(negative counts become zero). Nonfinite new device/gesture numbers become
+`0.0`, keeping evaluator state and JSON finite; other finite values are preserved.
+No vibration, controller mapping changes or live query builtins are exposed.
+
+Try `nix run . -- examples/devices.nix`: move with a gamepad's left stick or
+keyboard arrows; tap/click or press the south face button to change color.
+The plain Nix demo displays contacts and native gesture state, and works without
+connected gamepads or touch hardware.
 
 ### Drawing commands
 

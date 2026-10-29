@@ -49,7 +49,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     Reader r(state, pos);
     if (state.settings.pureEval || state.settings.restrictEval)
         r.fail("builtins.raylib requires impure, unrestricted evaluation");
-    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "audio", "state", "assets"});
+    r.fields(*args[0], {"width", "height", "title", "fps", "maxFrames", "hidden", "resizable", "audio", "gestures", "state", "assets"});
     int width = r.defaultInt(*args[0], "width", 800, 1);
     int height = r.defaultInt(*args[0], "height", 450, 1);
     int fps = r.defaultInt(*args[0], "fps", 60);
@@ -57,6 +57,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     bool hidden = r.defaultBool(*args[0], "hidden", false);
     bool resizable = r.defaultBool(*args[0], "resizable", false);
     bool audio = r.defaultBool(*args[0], "audio", false);
+    auto gestures = gestureFlags(state, pos, r.optional(*args[0], "gestures"));
     auto * titleValue = r.optional(*args[0], "title");
     auto title = titleValue ? r.string(*titleValue) : "nixray";
     state.forceFunction(*args[1], pos, context);
@@ -76,6 +77,8 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     state.forceValueDeep(**current);
     Window window(width, height, title, hidden, resizable);
     if (!IsWindowReady()) r.fail("could not initialize a raylib window; check DISPLAY and OpenGL support");
+    // Gesture flags are native global state; set defaults too on every new run.
+    SetGesturesEnabled(gestures);
     AudioDevice device(audio, r);
     // Assets (including partial loads) are destroyed before device and Window.
     Assets assets(specs, r);
@@ -85,7 +88,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(19);
+        auto frame = state.buildBindings(22);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());

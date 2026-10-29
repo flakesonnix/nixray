@@ -44,6 +44,29 @@ rec {
   keyPressed = frame: key: builtins.elem key frame.keysPressed;
   keyReleased = frame: key: builtins.elem key frame.keysReleased;
   mouseReleased = frame: button: builtins.elem button frame.mouseReleased;
+  gamepadButtons = {
+    unknown = 0;
+    leftFaceUp = 1; leftFaceRight = 2; leftFaceDown = 3; leftFaceLeft = 4;
+    rightFaceUp = 5; rightFaceRight = 6; rightFaceDown = 7; rightFaceLeft = 8;
+    leftTrigger1 = 9; leftTrigger2 = 10; rightTrigger1 = 11; rightTrigger2 = 12;
+    middleLeft = 13; middle = 14; middleRight = 15; leftThumb = 16; rightThumb = 17;
+  };
+  gamepadAxes = { leftX = 0; leftY = 1; rightX = 2; rightY = 3; leftTrigger = 4; rightTrigger = 5; };
+  gestures = {
+    none = 0; tap = 1; doubleTap = 2; hold = 4; drag = 8;
+    swipeRight = 16; swipeLeft = 32; swipeUp = 64; swipeDown = 128;
+    pinchIn = 256; pinchOut = 512;
+  };
+  gamepad = frame: id:
+    let matches = builtins.filter (pad: pad.id == id) frame.gamepads;
+    in if matches == [] then null else builtins.head matches;
+  gamepadAxis = pad: axis:
+    if pad == null || axis < 0 || axis >= builtins.length pad.axes then 0.0
+    else builtins.elemAt pad.axes axis;
+  gamepadButtonDown = pad: button: pad != null && builtins.elem button pad.buttonsDown;
+  gamepadButtonPressed = pad: button: pad != null && builtins.elem button pad.buttonsPressed;
+  gamepadButtonReleased = pad: button: pad != null && builtins.elem button pad.buttonsReleased;
+  gestureDetected = frame: code: frame.gesture.detected == code;
 
   playSound = sound: { op = "playSound"; inherit sound; };
   pauseSound = sound: { op = "pauseSound"; inherit sound; };
