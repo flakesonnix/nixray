@@ -178,9 +178,9 @@ Unicode characters may be retained in state but displayed as fallback glyphs.
 ### Drawing commands
 
 Colors are four integers, `[ red green blue alpha ]`, each in `0..255`.
-Coordinates and dimensions are signed 32-bit integers; sizes must be
+Positions and rectangular dimensions are signed 32-bit integers; sizes must be
 nonnegative (text size must be positive). Circle radii accept finite,
-nonnegative integers or floats, as do ellipse radii.
+nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 
 | `op` | Required attributes besides `op` |
 | --- | --- |
@@ -193,11 +193,18 @@ nonnegative integers or floats, as do ellipse radii.
 | `text` | `text`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
+| `rectangleGradientV` | `x`, `y`, `width`, `height`, `top`, `bottom` |
+| `rectangleGradientH` | `x`, `y`, `width`, `height`, `left`, `right` |
+| `rectangleGradientEx` | `x`, `y`, `width`, `height`, `topLeft`, `bottomLeft`, `bottomRight`, `topRight` |
 | `rectangleRounded`, `rectangleRoundedLines` | `x`, `y`, `width`, `height`, `roundness`, `color` |
 | `circle`, `circleLines` | `x`, `y`, `radius`, `color` |
+| `circleGradient` | `x`, `y`, `radius`, `inner`, `outer` |
+| `circleSector`, `circleSectorLines` | `x`, `y`, `radius`, `startAngle`, `endAngle`, `color` |
+| `ring`, `ringLines` | `x`, `y`, `innerRadius`, `outerRadius`, `startAngle`, `endAngle`, `color` |
 | `ellipse`, `ellipseLines` | `x`, `y`, `radiusX`, `radiusY`, `color` |
 | `triangle`, `triangleLines` | `x1`, `y1`, `x2`, `y2`, `x3`, `y3`, `color` |
 | `line` | `x1`, `y1`, `x2`, `y2`, `color` |
+| `lineEx` | `x1`, `y1`, `x2`, `y2`, `thickness`, `color` |
 | `pixel` | `x`, `y`, `color` |
 | `fps` | `x`, `y` |
 
@@ -257,6 +264,43 @@ fully validated in these cases.
 Try `nix run . -- examples/shapes.nix` for all six commands. Matching helpers
 such as `ray.triangle { ... }` and `ray.rectangleRoundedLines { ... }` construct
 the same command attribute sets.
+
+#### Gradients and thick lines
+
+`lineEx` uses a finite nonnegative `thickness` in drawing-coordinate units, with
+butt caps at the endpoints. Zero thickness and coincident native float endpoints
+draw nothing. The existing `line` command remains a one-pixel line.
+
+Rectangle gradients use the same integer bounds as rectangles. `V` blends top
+to bottom; `H` blends left to right. `Ex` assigns the four named corner colors
+and follows raylib's two-triangle vertex interpolation, not a bilinear four-corner
+blend. `circleGradient` blends `inner` at the center toward `outer` on raylib's
+fixed 36-segment circular boundary. These commands take their named colors instead
+of a single `color`, and support normal alpha, blend and shader scopes.
+
+#### Sectors and rings
+
+Arc angles are finite degrees: **0 points right and positive angles turn clockwise**.
+Reversed bounds swap, rather than implicitly wrapping: `350..10` becomes
+`10..350`. Use `350..370` for a 20-degree arc across zero. The absolute span
+must not exceed 360 degrees, checked before float rounding; the start angle is
+normalized before native drawing. Negative and large finite angles are accepted
+when their span is valid.
+
+All four arc commands accept optional `segments`, an integer in `0..4096`.
+Omitted or zero selects bounded automatic tessellation based on the outer radius
+and span. Positive counts are raised to raylib's minimum (roughly one segment
+per 90 degrees), avoiding its unsafe automatic path at extreme radii.
+
+Ring radii must satisfy `0 <= innerRadius <= outerRadius`, checked before float
+rounding. A zero inner radius produces a sector. Zero-radius sectors, equal-radius
+rings, zero-angle spans, and zero-width/height rectangle gradients draw nothing,
+including outline variants; all fields are still validated. Arc `Lines` variants
+draw one-pixel contours **and radial caps**, including raylib's full-turn seam.
+
+Try `nix run . -- examples/drawing.nix` for all nine commands. The example rotates
+the arcs; holding Space switches their span from 270 to 90 degrees. Matching Nix
+constructors, e.g. `ray.ring { ... }`, use the attribute sets above.
 
 ### Clipping
 

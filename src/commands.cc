@@ -90,7 +90,10 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
         } else if (op == "text") {
             result.emplace_back(textCommand(state, pos, *entry, assets));
         } else if (op == "triangle" || op == "triangleLines" || op == "ellipse" || op == "ellipseLines" ||
-                   op == "rectangleRounded" || op == "rectangleRoundedLines") {
+                   op == "rectangleRounded" || op == "rectangleRoundedLines" || op == "lineEx" ||
+                   op == "rectangleGradientV" || op == "rectangleGradientH" || op == "rectangleGradientEx" ||
+                   op == "circleGradient" || op == "circleSector" || op == "circleSectorLines" ||
+                   op == "ring" || op == "ringLines") {
             result.emplace_back(shapeCommand(state, pos, *entry, op));
         } else if (op == "rectangle" || op == "rectangleLines") {
             r.fields(*entry, {"op", "x", "y", "width", "height", "color"});

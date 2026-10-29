@@ -71,13 +71,19 @@ public:
         return found ? integer(*found, name, minimum) : fallback;
     }
 
-    float number(Value & value, const char * name, float minimum = -std::numeric_limits<float>::max(),
-                 float maximum = std::numeric_limits<float>::max()) const
+    double numberDouble(Value & value, const char * name, double minimum = -std::numeric_limits<float>::max(),
+                        double maximum = std::numeric_limits<float>::max()) const
     {
         double n = state.forceFloat(value, pos, context);
         if (!std::isfinite(n) || n < minimum || n > maximum)
             fail(std::string("'") + name + "' must be a finite number in range");
-        return static_cast<float>(n);
+        return n;
+    }
+
+    float number(Value & value, const char * name, float minimum = -std::numeric_limits<float>::max(),
+                 float maximum = std::numeric_limits<float>::max()) const
+    {
+        return static_cast<float>(numberDouble(value, name, minimum, maximum));
     }
 
     bool defaultBool(Value & value, const char * name, bool fallback) const

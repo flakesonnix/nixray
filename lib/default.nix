@@ -71,15 +71,24 @@ rec {
   texture = args: args // { op = "texture"; };
   rectangle = args: args // { op = "rectangle"; };
   rectangleLines = args: args // { op = "rectangleLines"; };
+  rectangleGradientV = args: args // { op = "rectangleGradientV"; };
+  rectangleGradientH = args: args // { op = "rectangleGradientH"; };
+  rectangleGradientEx = args: args // { op = "rectangleGradientEx"; };
   rectangleRounded = args: args // { op = "rectangleRounded"; };
   rectangleRoundedLines = args: args // { op = "rectangleRoundedLines"; };
   circle = args: args // { op = "circle"; };
   circleLines = args: args // { op = "circleLines"; };
+  circleGradient = args: args // { op = "circleGradient"; };
+  circleSector = args: args // { op = "circleSector"; };
+  circleSectorLines = args: args // { op = "circleSectorLines"; };
+  ring = args: args // { op = "ring"; };
+  ringLines = args: args // { op = "ringLines"; };
   ellipse = args: args // { op = "ellipse"; };
   ellipseLines = args: args // { op = "ellipseLines"; };
   triangle = args: args // { op = "triangle"; };
   triangleLines = args: args // { op = "triangleLines"; };
   line = args: args // { op = "line"; };
+  lineEx = args: args // { op = "lineEx"; };
   pixel = args: args // { op = "pixel"; };
   fps = x: y: { op = "fps"; inherit x y; };
 }

@@ -215,10 +215,15 @@ class AudioControlCases:
                 else if frame.frame == 50 then [ {{ op = "stop{suffix}"; {kind} = "tone"; }} ]
                 else if frame.frame == 60 then [ {{ op = "play{suffix}"; {kind} = "tone"; }} ] else []'''
                 left, right = self._capture_audio_controls(kind, actions=actions, frames=90)
-                tail = left[len(left) * 3 // 4:]
+                # Cleanup can append a silent device callback after asset unloading.
+                # Measure the final audible quarter-second, not that padding.
+                last = next((i + 1 for i in range(len(left) - 1, -1, -1) if abs(left[i]) > 1e-6), 0)
+                self.assertGreaterEqual(last, 12000)
+                first = last - 12000
+                tail = left[first:last]
                 self.assertGreater(self._rms(tail), 0.05)
                 self.assertAlmostEqual(self._frequency(tail), 880, delta=5)
-                self.assertLess(self._rms(right[len(right) * 3 // 4:]), 1e-7)
+                self.assertLess(self._rms(right[first:last]), 1e-7)
                 events = self._audio_trace()
                 self.assertEqual(events.count(f"{kind}-pitch 2"), 1)
                 self.assertEqual(events.count(f"{kind}-pan -1"), 1)
