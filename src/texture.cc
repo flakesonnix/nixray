@@ -16,7 +16,7 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                        const std::string * activeTexture)
 {
     Reader r(state, pos);
-    r.fields(value, {"op", "texture", "x", "y", "tint", "scale", "rotation", "source", "origin", "flipX", "flipY"});
+    r.fields(value, {"op", "texture", "x", "y", "width", "height", "tint", "scale", "rotation", "source", "origin", "flipX", "flipY"});
     auto name = r.string(r.required(value, "texture"));
     if (name.empty()) r.fail("texture name must not be empty");
     if (activeTexture && *activeTexture == name)
@@ -25,6 +25,11 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
     auto * tintValue = r.optional(value, "tint");
     auto tint = tintValue ? r.color(*tintValue) : WHITE;
     auto * scaleValue = r.optional(value, "scale");
+    auto * destWidth = r.optional(value, "width"), * destHeight = r.optional(value, "height");
+    bool sized = destWidth || destHeight;
+    if (sized && scaleValue) r.fail("texture width/height and scale are mutually exclusive");
+    int explicitWidth = sized ? r.integerAttr(value, "width", 0) : 0;
+    int explicitHeight = sized ? r.integerAttr(value, "height", 0) : 0;
     float scale = scaleValue ? r.number(*scaleValue, "scale", 0) : 1.0f;
     if (scale == 0) r.fail("scale must be positive");
     auto * rotationValue = r.optional(value, "rotation");
@@ -60,10 +65,11 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
             r.fail("source rectangle exceeds texture '" + name + "'");
     }
     // Bound the diagonal so rotating a very large quad cannot overflow floats.
-    if (std::hypot(static_cast<double>(width) * scale,
-                   static_cast<double>(height) * scale) > std::numeric_limits<float>::max())
+    double outputWidth = sized ? explicitWidth : static_cast<double>(width)*scale;
+    double outputHeight = sized ? explicitHeight : static_cast<double>(height)*scale;
+    if (std::hypot(outputWidth, outputHeight) > std::numeric_limits<float>::max())
         r.fail("scaled texture dimensions must fit finite raylib coordinates");
-    Rectangle destination{static_cast<float>(x), static_cast<float>(y), width * scale, height * scale};
+    Rectangle destination{static_cast<float>(x), static_cast<float>(y), static_cast<float>(outputWidth), static_cast<float>(outputHeight)};
     // Subtract in double precision before raylib performs the same steps in floats.
     double reachX = std::max(std::abs(static_cast<double>(origin.x)),
                              std::abs(static_cast<double>(destination.width) - origin.x));
@@ -82,23 +88,31 @@ Command textureCommand(EvalState & state, PosIdx pos, Value & value, const Asset
                      static_cast<float>(width), static_cast<float>(sourceHeight)};
     // Only reverse UV traversal horizontally, after checking positive sizes.
     if (flipX) source.width = -source.width;
-    return [=] { DrawTexturePro(texture, source, destination, origin, rotation, tint); };
+    return [=] {
+        if (destination.width > 0 && destination.height > 0) DrawTexturePro(texture, source, destination, origin, rotation, tint);
+    };
 }
 
 Command texturePatchCommand(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
                             const std::string * activeTexture)
 {
     Reader r(state, pos);
-    r.fields(value, {"op", "texture", "x", "y", "width", "height", "borders", "source", "tint", "origin", "rotation"});
+    r.fields(value, {"op", "texture", "x", "y", "width", "height", "borders", "source", "tint", "origin", "rotation", "layout"});
+    std::string layout = "nine";
+    if (auto * selected = r.optional(value, "layout")) layout = r.string(*selected);
+    bool horizontal = layout == "horizontal", vertical = layout == "vertical";
+    if (layout != "nine" && !horizontal && !vertical) r.fail("unknown texture patch layout '" + layout + "'");
     auto name = r.string(r.required(value, "texture"));
     if (name.empty()) r.fail("texture name must not be empty");
     if (activeTexture && *activeTexture == name) r.fail("cannot stamp texture '" + name + "' into its own paint");
     int x = r.integerAttr(value, "x"), y = r.integerAttr(value, "y");
     int width = r.integerAttr(value, "width", 0), height = r.integerAttr(value, "height", 0);
     auto & borders = r.required(value, "borders");
-    r.fields(borders, {"left", "top", "right", "bottom"});
-    int left = r.integerAttr(borders, "left", 0), top = r.integerAttr(borders, "top", 0);
-    int right = r.integerAttr(borders, "right", 0), bottom = r.integerAttr(borders, "bottom", 0);
+    r.fields(borders, horizontal ? std::initializer_list<std::string_view>{"left", "right"} :
+                      vertical ? std::initializer_list<std::string_view>{"top", "bottom"} :
+                                 std::initializer_list<std::string_view>{"left", "top", "right", "bottom"});
+    int left = vertical ? 0 : r.integerAttr(borders, "left", 0), top = horizontal ? 0 : r.integerAttr(borders, "top", 0);
+    int right = vertical ? 0 : r.integerAttr(borders, "right", 0), bottom = horizontal ? 0 : r.integerAttr(borders, "bottom", 0);
     auto * tintValue = r.optional(value, "tint");
     auto tint = tintValue ? r.color(*tintValue) : WHITE;
     float rotation = 0;
@@ -129,7 +143,9 @@ Command texturePatchCommand(EvalState & state, PosIdx pos, Value & value, const 
     if (assets && (static_cast<int64_t>(sx) + sw > texture.width || static_cast<int64_t>(sy) + sh > texture.height))
         r.fail("source rectangle exceeds texture '" + name + "'");
     if ((assets || source) && (static_cast<int64_t>(left) + right >= sw || static_cast<int64_t>(top) + bottom >= sh))
-        r.fail("nine-patch borders must leave a nonempty source center");
+        r.fail("texture patch borders must leave a nonempty source center");
+    if ((assets || source) && ((horizontal && height != sh) || (vertical && width != sw)))
+        r.fail("three-patch destination must preserve the untouched source dimension");
     // Pure validation cannot resolve an omitted source size; zero-area panels still validate fully.
     if (!assets || width == 0 || height == 0) return [] {};
     double dl = left, dr = right, dt = top, db = bottom;

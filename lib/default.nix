@@ -5,6 +5,9 @@ rec {
   model = args: args // { op = "model"; };
   modelWires = args: args // { op = "modelWires"; };
   validateWindow = actions: builtins.raylibValidateWindow actions;
+  validateTextures = actions: builtins.raylibValidateTextures actions;
+  updateTexture = args: args // { op = "updateTexture"; };
+  updateTextureRec = args: args // { op = "updateTextureRec"; };
   version = builtins.raylibVersion;
   loadImage = builtins.raylibLoadImage;
   genImage = builtins.raylibGenImage;

@@ -16,6 +16,8 @@ add_library(nixray MODULE
     src/assets.cc
     src/image.cc
     src/texture.cc
+    src/texture_sampling.cc
+    src/texture_effects.cc
     src/text.cc
     src/shapes.cc
     src/curves.cc
@@ -39,11 +41,12 @@ install(TARGETS nixray LIBRARY DESTINATION lib/nix/plugins)
 include(CTest)
 if(BUILD_TESTING)
     # These hooks are only preloaded by tests and never installed with the plugin.
-    foreach(hook IN ITEMS capture input audio window model)
+    foreach(hook IN ITEMS capture input audio window model texture)
         add_library(nixray-test-${hook} MODULE tests/${hook}.cc)
         target_compile_features(nixray-test-${hook} PRIVATE cxx_std_23)
         target_compile_options(nixray-test-${hook} PRIVATE -Wall -Wextra)
         target_link_libraries(nixray-test-${hook} PRIVATE PkgConfig::RAYLIB ${CMAKE_DL_LIBS})
         set_target_properties(nixray-test-${hook} PROPERTIES PREFIX "")
     endforeach()
+    target_link_libraries(nixray-test-texture PRIVATE PkgConfig::GLFW)
 endif()

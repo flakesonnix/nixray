@@ -1,6 +1,7 @@
 #include "assets.hh"
 #include "reader.hh"
 #include "render_texture.hh"
+#include "texture.hh"
 
 #include <set>
 #include <limits>
@@ -17,6 +18,10 @@ TextureOptions textureOptions(const Reader & r, Value & value)
         auto name = r.string(*filter);
         if (name == "point") options.filter = TEXTURE_FILTER_POINT;
         else if (name == "bilinear") options.filter = TEXTURE_FILTER_BILINEAR;
+        else if (name == "trilinear") options.filter = TEXTURE_FILTER_TRILINEAR;
+        else if (name == "anisotropic4x") options.filter = TEXTURE_FILTER_ANISOTROPIC_4X;
+        else if (name == "anisotropic8x") options.filter = TEXTURE_FILTER_ANISOTROPIC_8X;
+        else if (name == "anisotropic16x") options.filter = TEXTURE_FILTER_ANISOTROPIC_16X;
         else r.fail("unknown texture filter '" + name + "'");
     }
     if (auto * wrap = r.optional(value, "wrap")) {
@@ -24,15 +29,13 @@ TextureOptions textureOptions(const Reader & r, Value & value)
         if (name == "clamp") options.wrap = TEXTURE_WRAP_CLAMP;
         else if (name == "repeat") options.wrap = TEXTURE_WRAP_REPEAT;
         else if (name == "mirrorRepeat") options.wrap = TEXTURE_WRAP_MIRROR_REPEAT;
+        else if (name == "mirrorClamp") options.wrap = TEXTURE_WRAP_MIRROR_CLAMP;
         else r.fail("unknown texture wrap '" + name + "'");
     }
+    bool needsMipmaps = options.filter && *options.filter >= TEXTURE_FILTER_TRILINEAR;
+    options.mipmaps = r.defaultBool(value, "mipmaps", needsMipmaps);
+    if (needsMipmaps && !options.mipmaps) r.fail("trilinear and anisotropic filters require mipmaps");
     return options;
-}
-
-void applyTextureOptions(Texture2D texture, const TextureOptions & options)
-{
-    if (options.filter) SetTextureFilter(texture, *options.filter);
-    if (options.wrap) SetTextureWrap(texture, *options.wrap);
 }
 
 } // namespace
@@ -74,7 +77,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
     entries("textures", [&](std::string name, Value & entry) {
         TextureSpec texture;
         if (entry.type() == nAttrs) {
-            r.fields(entry, {"path", "image", "filter", "wrap"});
+            r.fields(entry, {"path", "image", "filter", "wrap", "mipmaps"});
             auto * sourceImage = r.optional(entry, "image");
             if (sourceImage) {
                 if (r.optional(entry, "path")) r.fail("texture asset requires exactly one of 'path' or 'image'");
@@ -114,7 +117,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
         specs.fonts.emplace(std::move(name), std::move(font));
     });
     entries("renderTextures", [&](std::string name, Value & entry) {
-        r.fields(entry, {"width", "height", "filter", "wrap"});
+        r.fields(entry, {"width", "height", "filter", "wrap", "mipmaps"});
         TextureSize size{r.integer(r.required(entry, "width"), "width", 1, 16384),
                          r.integer(r.required(entry, "height"), "height", 1, 16384), textureOptions(r, entry)};
         specs.renderTextures.emplace(std::move(name), size);
@@ -190,7 +193,7 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
         *texture = spec.image ? LoadTextureFromImage(spec.image->value) : LoadTexture(spec.path.c_str());
         if (!IsTextureValid(*texture)) r.fail(spec.image ? "could not upload image texture '" + name + "'"
                                                        : "could not load texture '" + name + "' from '" + spec.path + "'");
-        applyTextureOptions(*texture, spec.options);
+        configureTexture(*texture, spec.options, r);
         textureOptions.emplace(name, spec.options);
         textures.emplace(name, std::move(texture));
     }
@@ -213,7 +216,7 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
         if (!IsRenderTextureValid(*target)) r.fail("could not create render texture '" + name + "'");
         // Framebuffer contents start undefined; stamps must never read stale pixels.
         initializeRenderTexture(*target);
-        applyTextureOptions(target->texture, spec.options);
+        configureTexture(target->texture, spec.options, r);
         textureOptions.emplace(name, spec.options);
         renderTextures.emplace(name, std::move(target));
     }

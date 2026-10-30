@@ -8,6 +8,7 @@
 #include "window.hh"
 #include "model.hh"
 #include "log.hh"
+#include "texture.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
@@ -115,8 +116,10 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         (**input).mkAttrs(frame);
         auto output = allocRootValue(state.allocValue());
         state.callFunction(*args[1], **input, **output, pos);
-        r.fields(**output, {"commands", "audio", "window", "state", "close"});
+        r.fields(**output, {"commands", "textures", "audio", "window", "state", "close"});
         auto batch = commands(state, pos, r.required(**output, "commands"), &assets);
+        std::vector<Command> textureEffects;
+        if (auto * actions = r.optional(**output, "textures")) textureEffects = textureActions(state, pos, *actions, &assets);
         std::vector<Command> effects;
         if (auto * actions = r.optional(**output, "audio")) {
             effects = audioCommands(state, pos, *actions, audio ? &assets : nullptr);
@@ -132,7 +135,8 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
             state.forceValueDeep(**nextRoot);
             current = std::move(nextRoot);
         }
-        // Finish all evaluation/validation before changing playback or drawing.
+        // Finish all evaluation/validation before uploads, playback or drawing.
+        for (const auto & action : textureEffects) action();
         for (const auto & action : effects) action();
         assets.updateMusic();
         BeginDrawing();

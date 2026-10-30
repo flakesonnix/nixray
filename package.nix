@@ -124,7 +124,8 @@ stdenv.mkDerivation {
         --input-library "$PWD/nixray-test-input.so" \
         --audio-library "$PWD/nixray-test-audio.so" \
         --window-library "$PWD/nixray-test-window.so" \
-        --model-library "$PWD/nixray-test-model.so"
+        --model-library "$PWD/nixray-test-model.so" \
+        --texture-library "$PWD/nixray-test-texture.so"
     runHook postCheck
   '';
 
@@ -135,6 +136,7 @@ stdenv.mkDerivation {
     test ! -e "$out/lib/nix/plugins/nixray-test-audio.so"
     test ! -e "$out/lib/nix/plugins/nixray-test-window.so"
     test ! -e "$out/lib/nix/plugins/nixray-test-model.so"
+    test ! -e "$out/lib/nix/plugins/nixray-test-texture.so"
     unset WAYLAND_DISPLAY
     export XDG_SESSION_TYPE=x11
     export HOME="$TMPDIR/home"
@@ -215,6 +217,14 @@ EOF
     fi
     printf '%s\n' "$image_demo"
     printf '%s\n' "$image_demo" | grep -q '"frames":2'
+    if ! texture_demo=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+      "$out/bin/nixray" "$out/share/nixray/examples/texture-updates.nix" --arg hidden true --arg maxFrames 2 2>&1)
+    then
+      printf '%s\n' "$texture_demo" >&2
+      exit 1
+    fi
+    printf '%s\n' "$texture_demo"
+    printf '%s\n' "$texture_demo" | grep -q '"frames":2,"state":{"paused":false,"tick":2}'
     xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck

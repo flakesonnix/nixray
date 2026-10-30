@@ -118,8 +118,8 @@ class TextureControlCases:
 
     def test_texture_control_invalid_asset_options(self):
         for group, base in (("textures", f"path = {self.pattern_path};"), ("renderTextures", "width = 2; height = 2;")):
-            for attributes, error in (('filter = "trilinear";', "unknown texture filter"), ('filter = true;', "expected a string"),
-                                      ('wrap = "mirrorClamp";', "unknown texture wrap"), ('wrap = 1;', "expected a string"),
+            for attributes, error in (('filter = "cubic";', "unknown texture filter"), ('filter = true;', "expected a string"),
+                                      ('wrap = "border";', "unknown texture wrap"), ('wrap = 1;', "expected a string"),
                                       ('typo = 1;', "unknown attribute 'typo'")):
                 with self.subTest(group=group, attributes=attributes):
                     self.evaluate(f'''builtins.raylib {{ assets.{group}.tex = {{ {base} {attributes} }}; }}
@@ -179,7 +179,7 @@ class TextureControlCases:
                                 ('rotation = 1.0e100;', "finite number"), ('tint = [];', "color must"),
                                 ('origin = {};', "missing attribute 'x'"), ('origin = { x = 3.0e38; y = 3.0e38; };', "texture origin and dimensions"),
                                 ('scale = 2;', "unknown attribute 'scale'"), ('flipX = true;', "unknown attribute 'flipX'"),
-                                ('layout = "horizontal";', "unknown attribute 'layout'")):
+                                ('layout = "diagonal";', "unknown texture patch layout")):
             self.evaluate(f"builtins.raylibValidate [ ({command} // {{ {changes} }}) ]", error=error)
         for borders, error in (('{ left = -1; top = 0; right = 0; bottom = 0; }', "integer in"),
                                 ('{ left = 1; top = 2; right = 3; bottom = 1; typo = 1; }', "unknown attribute 'typo'")):

@@ -1,5 +1,6 @@
 #include "render_texture.hh"
 #include "blend.hh"
+#include "texture.hh"
 
 #include <rlgl.h>
 #include <utility>
@@ -35,6 +36,7 @@ Command paintCommand(RenderTexture2D target, const std::optional<ClipBounds> & p
             }
             for (const auto & command : batch) command();
             EndTextureMode();
+            refreshTextureMipmaps(target.texture);
         }
         // EndTextureMode restores the window viewport but keeps the suspended
         // scissor; re-apply both before following window commands.

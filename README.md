@@ -73,6 +73,8 @@ Loading the plugin registers:
   return its length. Pure; no window, device or asset loading.
 - `builtins.raylibValidateWindow actions`: validate a flat window action list and
   return its length. Pure; no display, window or native mutations.
+- `builtins.raylibValidateTextures actions`: validate a flat CPU-image upload list
+  and return its length. Pure; no display, texture loading or GPU mutations.
 - `builtins.raylibVersion`: linked raylib version string.
 - `builtins.raylibLoadImage`, `raylibGenImage`, `raylibImageTransform`,
   `raylibImageInfo`, `raylibImagePixel` and `raylibExportImage`: standalone CPU
@@ -160,10 +162,10 @@ The callback receives a fresh attribute set each frame:
 }
 ```
 
-It returns `{ commands = [ ... ]; audio = [ ... ]; window = [ ... ]; state = nextState; close = false; }`.
+It returns `{ commands = [ ... ]; textures = [ ... ]; audio = [ ... ]; window = [ ... ]; state = nextState; close = false; }`.
 Only `commands` is required. Omitted `state` preserves the previous state.
-Omitted `audio`/`window` means no corresponding actions. `close = true` exits
-**after** processing audio, drawing that frame, and applying window actions.
+Omitted `textures`/`audio`/`window` means no corresponding actions. `close = true`
+exits **after** texture uploads, audio, drawing that frame, and window actions.
 The native loop returns
 `{ frames = totalRenderedFrames; state = finalState; }`.
 
@@ -330,8 +332,8 @@ the cursor; `hidden` releases capture and hides it; `captured` requests raylib's
 disabled/locked cursor mode. Focus and backend policies still govern actual
 capture. No visibility/minimize/maximize/monitor-switch actions are exposed yet.
 
-All drawing, audio and window lists, `close`, and the next state are evaluated
-and validated **before any frame effects**. Then audio actions run, the frame
+All drawing, texture, audio and window lists, `close`, and the next state are evaluated
+and validated **before any frame effects**. Then texture uploads and audio actions run, the frame
 draws, and window actions execute **after `EndDrawing`**, in their list order.
 This preserves the dimensions used to compile current-frame geometry/clips.
 Later snapshots observe native changes; FPS changes affect later frame pacing,
@@ -419,6 +421,12 @@ The default is `{ x = 0; y = 0; }`, retaining the existing top-left anchor.
 the selected image region before scaling/rotation, without changing its output
 size or pivot. Source widths/heights remain positive; use these flags rather
 than negative dimensions.
+
+Alternatively, paired `width` and `height` set a texture's destination size
+independently, as nonnegative signed 32-bit integers. They are mutually exclusive
+with an explicit `scale`, including `scale = 1`. Origins remain destination-pixel
+offsets, and rotation/flips/crops work as before. A zero destination dimension
+draws nothing after full validation, including asset names and source bounds.
 
 For sprites/atlases, `texture` accepts `source = { x; y; width; height; }` in
 image pixels. Offsets must be nonnegative integers and dimensions positive
@@ -1008,8 +1016,9 @@ the first callback, and start fully transparent so stamps only show painted
 content. GPU resources are released with the other assets before the window
 closes.
 
-Optional `filter` and `wrap` fields use the same sampling controls as image
-textures below. They persist across paints; no mipmap generation is required.
+Optional `filter`, `wrap` and `mipmaps` fields use the same sampling controls as
+image textures below. They persist across paints. Opt-in mip chains start
+transparent and refresh after every completed paint, before later stamps.
 
 `paint` requires `texture` (a declared render texture name) and `commands`;
 `clear` is an optional boolean, defaulting to `true`, which replaces previous
@@ -1264,17 +1273,23 @@ selects filtering and wrapping, once per asset:
 
 ```nix
 assets.textures.logo = { path = ./logo.png; filter = "bilinear"; wrap = "clamp"; };
-assets.textures.tiles = { path = ./tiles.png; wrap = "repeat"; };
-assets.renderTextures.canvas = { width = 128; height = 128; filter = "bilinear"; };
+assets.textures.tiles = { path = ./tiles.png; wrap = "repeat"; filter = "trilinear"; };
+assets.renderTextures.canvas = { width = 128; height = 128; filter = "trilinear"; };
 ```
 
-- `filter`: `"point"` or `"bilinear"`. Options sets default to point filtering;
+- `filter`: `"point"`, `"bilinear"`, `"trilinear"`, `"anisotropic4x"`,
+  `"anisotropic8x"` or `"anisotropic16x"`. Options sets default to point filtering;
   path-only declarations retain raylib's original sampler defaults.
-- `wrap`: `"clamp"`, `"repeat"` or `"mirrorRepeat"`, applied to both axes.
+- `mipmaps`: optional boolean. Defaults to `true` for trilinear/anisotropic
+  filters, otherwise `false`. Explicit `false` is an error with those filters.
+  `true` generates a complete native GPU mip chain, including NPOT textures.
+  `false` means no generation, not removal of mip levels already in a loaded file.
+- `wrap`: `"clamp"`, `"repeat"`, `"mirrorRepeat"` or `"mirrorClamp"`, applied to both axes.
   Omitting it preserves native wrapping **and the existing strict crop bounds**.
   Explicit repeat modes allow ordinary `texture` source rectangles beyond the
   image dimensions, including render textures; coordinates stay nonnegative and
-  dimensions positive signed 32-bit integers.
+  dimensions positive signed 32-bit integers. `mirrorClamp` does **not** grant
+  out-of-bounds crop permission.
 
 To tile, extend the source rectangle instead of merely increasing `scale`:
 
@@ -1285,11 +1300,63 @@ ray.texture { texture = "tiles"; x = 0; y = 0;
 ```
 
 Filtering/wrapping belong to each named GPU asset, not global drawing state.
-Declare the same path under separate names for different settings. Bilinear atlas
-crops can blend neighboring texels; pad atlas regions when that matters. Mipmapped
-and anisotropic filters, and mirror-clamp wrapping, are not exposed yet.
+Declare the same path or CPU image under separate names for different settings.
+Atlas crops can blend neighboring texels, including through mip levels; pad atlas
+regions when that matters. With mipmaps, point uses nearest texels/nearest mip,
+bilinear uses linear texels/nearest mip, and trilinear interpolates both. Anisotropic
+presets establish a trilinear base before applying the requested anisotropy.
+A 1x1 texture has only level zero, so linear filtering is equivalent to trilinear.
 
-#### Nine-patch panels
+Mipmap completeness is checked against the actual GPU levels before the first
+callback. Anisotropic presets require the desktop driver's
+`GL_EXT_texture_filter_anisotropic` and a maximum at least as large as requested;
+`mirrorClamp` requires `GL_EXT_texture_mirror_clamp`. Unsupported features or
+unapplied settings are errors, not silent downgrades or capped requests.
+
+#### Updating texture pixels
+
+Return a separate flat `textures` action list to upload immutable CPU images:
+
+```nix
+textures = [
+  (ray.updateTexture { texture = "logo"; image = replacement; })
+  (ray.updateTextureRec { texture = "logo"; x = 4; y = 8; image = patch; })
+];
+```
+
+`updateTexture` requires `texture` and `image`; image dimensions must match the
+existing GPU texture exactly. `updateTextureRec` additionally requires nonnegative
+signed 32-bit `x`, `y`; its rectangle size comes from the image and must fit the
+texture. Names resolve only in `assets.textures`: update actions cannot write
+render textures (use `paint`), font atlases or imported model textures.
+Textures are never resized or reallocated by these actions.
+
+All lists, `close` and next state validate before any uploads. Actions execute in
+list order **before audio and `BeginDrawing`**, once per submitted frame; pixels
+persist until overwritten or the window closes. Each affected mipmapped texture's
+chain refreshes once after all uploads, before rendering. No upload is performed
+when a later listed action or frame field fails validation/evaluation. This does
+not promise rollback of native driver failures after execution starts.
+
+Input images stay immutable and may outlive the window. Their RGBA8 pixels are
+converted to a loaded uncompressed byte/packed-16-bit texture's existing format
+before effects; a target without alpha discards input alpha. Float and compressed
+texture formats are not updateable through these actions. A list allows at most
+256 actions and 16777216 total uploaded pixels; this is not a GPU-time guarantee.
+Updates are not drawing/audio/window commands and cannot appear inside scopes.
+
+`ray.validateTextures` aliases `builtins.raylibValidateTextures`. It validates
+operation/image types, integer offsets and list/upload limits without a GPU,
+including in pure/restricted evaluation; asset names, formats and destination
+bounds resolve only during a real run. It returns the original action-list length.
+
+Try `nix run . -- examples/texture-updates.nix`: immutable Nix-generated patches
+update point/mipmapped textures; Space pauses, R resets. Nonuniform stamps,
+mipmapped render targets and horizontal/vertical three-patch panels share the
+scene. To request strict driver-dependent anisotropy, add
+`--argstr filter anisotropic16x`. No Python or external assets are used by the demo.
+
+#### Nine- and three-patch panels
 
 `textureNPatch` stretches a nine-slice panel while retaining border sizes in
 drawing-coordinate units (one source pixel per border unit before camera scaling):
@@ -1312,7 +1379,16 @@ If the destination is smaller than the borders, each axis compresses its two
 borders proportionally; the full source corners are preserved and the destination
 center disappears. `tint`, `rotation` and `origin` match ordinary texture stamps,
 with the pivot relative to the **whole panel**, not each slice. Scale/flip flags
-and three-slice layouts are not exposed by this command.
+are not exposed by this command.
+
+Optional `layout` defaults to `"nine"`. `"horizontal"` uses
+`borders = { left; right; }`, stretches only horizontally and requires destination
+`height` to equal the source height. `"vertical"` uses `borders = { top; bottom; }`,
+stretches only vertically and requires destination `width` to equal source width.
+Unused border fields are errors. Both destination dimensions remain required;
+the untouched dimension is checked with explicit source bounds in pure validation
+or with loaded whole-asset dimensions at runtime. Active-axis borders compress
+proportionally for small destinations, just as for nine-patch panels.
 
 Panels work with image and render-texture assets, including top-left logical
 crops on framebuffer textures, and honor camera, clip, blend and shader scopes.
@@ -1517,8 +1593,8 @@ paused and stopped assets; music times are native float seconds. With audio
 disabled, `enabled = false` and both maps are empty. Backend playback proceeds
 asynchronously; these values are not a sample-synchronized clock.
 
-Drawing actions, audio actions, `close` and the next state are all evaluated and
-validated before any of this frame's playback changes. The loop then executes
+Drawing, texture/audio/window actions, `close` and the next state are all evaluated
+and validated before any frame effects. The loop uploads textures, executes
 audio actions, calls `UpdateMusicStream` once for each loaded track, and renders
 the frame. Existing playback is not frozen during evaluation, and slow callbacks
 can starve streaming audio. Sound/music resources are unloaded before the owned
@@ -1582,13 +1658,44 @@ headroom for all 13 voices. The example requires a working audio backend to hear
 If keys light up but sound is absent, check the system mixer: the application
 stream is typically named `nix`, and its saved volume is separate from the wheel.
 
+## Drawing API coverage
+
+This is a feature-oriented wrapper, not a one-to-one export of every C function.
+The inventory below was checked against pinned raylib
+`c610d228a244f930ad53492604640f39584c66da` (`raylib.h` reports `5.6-dev`).
+Existing fonts/glyph selection, text measurement, triangles, regular polygons,
+sectors, rings, splines, models and lighting are **already implemented** above.
+
+Remaining dedicated drawing features include:
+
+| Area | Not exposed |
+| --- | --- |
+| 2D shapes | `DrawLineDashed`, rotated rectangles (`DrawRectanglePro`), thick rectangle/rounded contours (`DrawRectangleLinesEx`, `DrawRectangleRoundedLinesEx`), triangle fans/strips |
+| Text | Rotated/pivoted text (`DrawTextPro`), configurable glyph spacing, direct codepoint-list entry points; normal UTF-8 text and custom glyph sets already work |
+| 3D primitives | Native 3D circles, filled triangles/triangle strips, cylinders/cones and capsules (including native wire variants) |
+| Models/meshes | Point-cloud model drawing, nonuniform model-command scale, public custom/procedural mesh assets and instanced mesh drawing |
+| 3D textures/materials | Billboards, cubemaps, per-material texture-map reassignment and additional material-map shading; imported diffuse maps and scoped Blinn–Phong lighting already work |
+| Images/readback | GPU/screen-to-CPU readback, decoder animation frames, noise/text generators, channel/palette/border queries, blur/convolution/dither, image compositing/text/most CPU shape drawing, general pixel-format conversion and non-PNG/code exports |
+
+Native `V`/`Rec` convenience signatures are generally folded into existing Nix
+constructors, not counted as separate missing features. Likewise `splineLinear`
+already draws polylines; individual spline spans can be expressed by their point
+lists. A dedicated native GL line-strip entry point is not exposed. Native 3D
+point/ray/bounding-box convenience commands are absent, but their geometry is
+constructible with `line3D`/`cubeWires`. `DrawTexturePro`-style sizing/crops/pivots,
+all three NPatch layouts, mipmaps, the linked raylib filter/wrap presets and
+CPU-image texture uploads are covered above. Runtime sampler mutation and custom
+raw GPU texture formats remain unexposed. PBR and shadows require further shader
+work; they are not automatic built-in lighting features of core raylib.
+External GUI/physics libraries are not counted as missing core-raylib APIs.
+
 ## Evaluation semantics and safety
 
 Nix is lazy and memoizes expressions. Independent side-effecting builtins for
 `BeginDrawing` and `EndDrawing` would therefore be easy to skip, reorder, or run
 only once. Instead, the plugin owns an iterative C++ loop, calls a Nix function
-with a fresh snapshot, fully validates drawing/audio batches and state, then
-applies audio actions and draws in order. It closes owned devices and the window
+with a fresh snapshot, fully validates drawing/texture/audio/window batches and
+state, then applies uploads/audio, draws, and applies window actions. It closes owned devices and the window
 on normal exit and evaluator exceptions, and checks for
 Nix interrupts every frame. Nested windows are rejected.
 
@@ -1619,7 +1726,8 @@ env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 NIXRAY_TEST_SYNTH_TONES="$PWD/build/
   --input-library "$PWD/build/nixray-test-input.so" \
   --audio-library "$PWD/build/nixray-test-audio.so" \
   --window-library "$PWD/build/nixray-test-window.so" \
-  --model-library "$PWD/build/nixray-test-model.so"
+  --model-library "$PWD/build/nixray-test-model.so" \
+  --texture-library "$PWD/build/nixray-test-texture.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev
@@ -1649,6 +1757,9 @@ skeletal pose isolation, directional light colors, material nesting, specular/vi
 directions, flat-normal fallback and dense-geometry batch flushes. A native ownership
 hook checks that models, animations, imported textures and the lighting program are
 released before window close, including after evaluation failures.
+Texture tests query real GPU sampler parameters, mip dimensions and last-level
+pixels; check full/partial uploads, RGB row packing and refresh order; and inject
+unsupported capabilities to verify explicit failure and resource cleanup.
 Input tests preload a separate polling-state fixture for release edges, wheel
 axes, UTF-8 queues and snapshot lifetime checks. They do not require physical
 devices or claim to cover OS event delivery or IME integration. Audio tests use

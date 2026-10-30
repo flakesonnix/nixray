@@ -26,7 +26,8 @@ struct FontSpec {
 
 struct TextureOptions {
     std::optional<int> filter, wrap;
-    bool repeats() const { return wrap && *wrap != TEXTURE_WRAP_CLAMP; }
+    bool mipmaps = false;
+    bool repeats() const { return wrap && (*wrap == TEXTURE_WRAP_REPEAT || *wrap == TEXTURE_WRAP_MIRROR_REPEAT); }
 };
 
 struct TextureSpec {

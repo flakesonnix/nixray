@@ -5,6 +5,7 @@
 #include "audio.hh"
 #include "window.hh"
 #include "image.hh"
+#include "texture.hh"
 
 #include <nix/expr/primops.hh>
 #include <raylib.h>
@@ -25,7 +26,8 @@ RegisterPrimOp raylibOp({
            "frame.measureText measures text using the default or a named font. "
            "Opt-in config.audio enables sound/music assets and playback snapshots under frame.audio. "
            "frame.window snapshots window state; callback.window actions apply after drawing. "
-           "The callback returns { commands; audio ? []; window ? []; state ? previousState; close ? false; }. "
+            "callback.textures accepts CPU-image texture uploads applied before audio and drawing. "
+            "The callback returns { commands; textures ? []; audio ? []; window ? []; state ? previousState; close ? false; }. "
            "Returns { frames; state; }. Impure evaluation only.",
     .impl = run,
     .experimentalFeature = std::nullopt,
@@ -57,6 +59,15 @@ RegisterPrimOp validateAudioOp({
     .doc = "Validate a flat audio action list without a window, device or asset loading; return its length. Pure.",
     .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
         out.mkInt(static_cast<int64_t>(audioCommands(state, pos, *args[0]).size()));
+    },
+    .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp validateTexturesOp({
+    .name = "__raylibValidateTextures", .args = {"actions"}, .arity = 1,
+    .doc = "Validate a flat CPU-image texture upload action list without GPU mutations; return its length. Pure.",
+    .impl = [](EvalState & state, PosIdx pos, Value ** args, Value & out) {
+        out.mkInt(static_cast<int64_t>(textureActions(state, pos, *args[0]).size()));
     },
     .experimentalFeature = std::nullopt,
 });

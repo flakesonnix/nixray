@@ -12,7 +12,7 @@ MIRROR_CASES = (
 
 
 class PixelCases:
-    def _capture(self, commands, *, assets="{}", frames=1):
+    def _capture(self, commands, *, assets="{}", frames=1, textures="[]"):
         if not self.capture_library:
             self.skipTest("pass --capture-library to enable framebuffer pixel tests")
         library = Path(self.capture_library).resolve()
@@ -25,7 +25,7 @@ class PixelCases:
         result = self.evaluate(f'''builtins.raylib {{
           width = 32; height = 32; hidden = true; fps = 0; maxFrames = {frames};
           assets = {assets};
-        }} (frame: {{ commands = {commands}; }})''', env={
+        }} (frame: {{ commands = {commands}; textures = {textures}; }})''', env={
             "LD_PRELOAD": preload, "NIXRAY_TEST_CAPTURE": str(destination),
         })
         self.assertEqual(result, {"frames": frames, "state": None})
