@@ -124,6 +124,7 @@ rec {
   cylinderWiresEx = args: args // { op = "cylinderWiresEx"; };
   capsule = args: args // { op = "capsule"; };
   capsuleWires = args: args // { op = "capsuleWires"; };
+  billboard = args: args // { op = "billboard"; };
   grid = args: args // { op = "grid"; };
   blend = args: args // { op = "blend"; };
   shader = args: args // { op = "shader"; };

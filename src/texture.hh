@@ -20,5 +20,7 @@ Command textureCommand(nix::EvalState & state, nix::PosIdx pos, nix::Value & val
                         const Assets * assets, const std::string * activeTexture = nullptr);
 Command texturePatchCommand(nix::EvalState & state, nix::PosIdx pos, nix::Value & value,
                              const Assets * assets, const std::string * activeTexture = nullptr);
+Command billboardCommand(nix::EvalState & state, nix::PosIdx pos, nix::Value & value, Camera3D camera,
+                          const Assets * assets, const std::string * activeTexture = nullptr);
 
 } // namespace nixray

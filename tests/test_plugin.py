@@ -26,6 +26,7 @@ from clip_cases import ClipCases
 from camera_cases import CameraCases
 from three_d_cases import ThreeDCases
 from three_d_extra_cases import ThreeDExtraCases
+from billboard_cases import BillboardCases
 from model_cases import ModelCases
 from lighting_cases import LightingCases
 from image_cases import ImageCases
@@ -56,7 +57,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 class PluginTests(
     AssetCases, TextureCases, TextureControlCases, TextureAdvancedCases, PixelCases, InputCases, TextCases, TextAdvancedCases, ShapeCases, DrawingCases, DrawingExtraCases,
-    ImageCases, LightingCases, ModelCases, ThreeDCases, ThreeDExtraCases, WindowCases, DeviceInputCases, CurveCases, ClipCases, CameraCases, RenderCases,
+    ImageCases, LightingCases, ModelCases, ThreeDCases, ThreeDExtraCases, BillboardCases, WindowCases, DeviceInputCases, CurveCases, ClipCases, CameraCases, RenderCases,
     CollisionCases, CollisionExtraCases, BlendCases, ShaderCases, AudioCases, AudioControlCases, SynthCases, unittest.TestCase,
 ):
     capture_library = options.capture_library

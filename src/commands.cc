@@ -44,16 +44,19 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
     for (auto * entry : values) {
         auto op = r.string(r.required(*entry, "op"));
         bool model = op == "model" || op == "modelWires";
-        if (in3D && !isShape3D(op) && !model && op != "clip" && op != "blend" && op != "shader" && op != "clear" && op != "lighting" && op != "material")
+        bool billboard = op == "billboard";
+        if (in3D && !isShape3D(op) && !model && !billboard && op != "clip" && op != "blend" && op != "shader" && op != "clear" && op != "lighting" && op != "material")
             r.fail("drawing operation '" + op + "' is not supported inside camera3D");
-        if (isShape3D(op) || model) {
+        if (isShape3D(op) || model || billboard) {
             if (!in3D) r.fail("3D drawing operation '" + op + "' requires a camera3D scope");
             bool vertexNormals = op == "model" || op == "cube" || op == "sphere" || op == "plane";
-            bool solid = vertexNormals || op == "triangle3D" || op == "triangleStrip3D" || op == "cylinder" ||
+            bool solid = vertexNormals || billboard || op == "triangle3D" || op == "triangleStrip3D" || op == "cylinder" ||
                          op == "cylinderEx" || op == "capsule";
             const LightingShader * lighting = scene->lighting && solid && assets ? &assets->lighting(r) : nullptr;
             const Shader * shader = lighting ? &lighting->resource.program : activeShader.asset ? &activeShader.asset->program : nullptr;
-            auto draw = model ? modelCommand(state, pos, *entry, op, assets, shader) : shape3DCommand(state, pos, *entry, op);
+            auto draw = model ? modelCommand(state, pos, *entry, op, assets, shader) :
+                        billboard ? billboardCommand(state, pos, *entry, scene->camera, assets, activeTexture) :
+                                    shape3DCommand(state, pos, *entry, op);
             if (lighting) {
                 bool normals = vertexNormals;
                 if (model) {

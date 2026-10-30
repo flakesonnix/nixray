@@ -744,6 +744,7 @@ appear inside a `camera3D`, directly or through clips/blends/shaders or lighting
 | `cylinder`, `cylinderWires` | `position`, `radiusTop`, `radiusBottom`, `height`, `color` | `slices ? 16` |
 | `cylinderEx`, `cylinderWiresEx` | `start`, `end`, `startRadius`, `endRadius`, `color` | `slices ? 16` |
 | `capsule`, `capsuleWires` | `start`, `end`, `radius`, `color` | `slices ? 16`, `rings ? 8` |
+| `billboard` | `texture`, `position`, `height` | `width`, `source`, `up`, `origin`, `rotation`, `tint`, `flipX`, `flipY`; see below |
 | `grid` | `slices`, `spacing` | — |
 
 Positions are 3D sets; sizes, radius and spacing are finite nonnegative numbers.
@@ -806,6 +807,76 @@ share the existing 64-scope budget.
 
 Try `nix run . -- examples/three-d.nix`: WASD moves the camera, P changes projection,
 and an overhead render texture shows the same scene from another camera.
+
+### World-space billboards
+
+`billboard` draws a textured quad using the enclosing `camera3D`'s view-right
+direction and a chosen world-space up vector. One constructor covers the native
+`DrawBillboard`/`Rec`/`Pro` feature family:
+
+```nix
+ray.billboard {
+  texture = "label";                    # Ordinary texture or render texture
+  position = { x = 0; y = 2; z = 0; };
+  height = 2;                           # World-space height, required
+  # width = 4;                          # Optional; otherwise height * source aspect
+  # source = { x = 0; y = 0; width = 128; height = 64; };
+  up = { x = 0; y = 1; z = 0; };        # Default; normalized before sizing
+  # origin = { x = 2; y = 1; };          # World-unit pivot from bottom-left; default center
+  rotation = 20;                        # Right-handed degrees, default 0
+  tint = ray.colors.white;              # Default white
+  flipX = false; flipY = false;          # UV flips only; geometry stays unchanged
+}
+```
+
+`height` and optional `width` accept finite nonnegative integers or floats. Omitted
+width uses the **cropped source's** width/height ratio, or the full texture ratio
+when `source` is omitted. Explicit width allows nonuniform sizing. There is no
+`scale` field. Positions require exactly three finite numeric `x`, `y`, `z` fields.
+`origin` requires numeric `x`, `y` in **world units, not pixels or fractions**. It
+defaults to `{ x = width / 2; y = height / 2; }`, anchoring the center at `position`.
+The origin is measured from the quad's **bottom-left**, unlike 2D texture origins.
+Outside/negative pivots are allowed while the prepared coordinates remain finite.
+Rotation is normalized modulo 360 and follows the right-handed right/up plane;
+with the default front view, positive angles turn counterclockwise on screen.
+
+The default `up` is **world +Y**, matching native billboards, not automatically the
+camera's screen-up vector. Pitch can foreshorten the quad or make it edge-on. The
+supplied up vector is normalized but is **not orthogonalized** against view-right:
+a skewed basis draws a parallelogram. Zero up, parallel up/right, or a nonzero basis
+whose native normalization underflows/overflows are errors, even at zero size.
+A rolled camera may need an explicit up vector. Vertex order is preserved and
+back-face culling remains active; reversing up can turn the face away from view.
+
+`source` uses nonnegative integer pixel `x`/`y` and positive integer `width`/`height`,
+with the same bounds/repeat-wrap policy as 2D `texture`. `flipX`/`flipY` are Boolean
+and reverse only UV traversal after bounds checking, never winding or dimensions.
+Render textures use **upright logical source coordinates**, including crops and
+flips. A billboard may sample an earlier paint, but cannot read the texture of its
+own active paint, even at zero size. Texture filter/wrap/mipmap settings and
+same-frame CPU-image uploads apply without a separate billboard resource.
+
+Billboards require `camera3D` and honor depth, absolute clips, blend/shader scopes,
+render targets, and opt-in lighting/materials. Lit billboards use flat geometry
+normals; diffuse material/tint multiply sampled texture color and alpha. They
+create no new scope and leave following geometry's texture/camera state intact.
+**Native depth writes remain enabled even for fully transparent texels**: alpha
+blending is not alpha testing, and a transparent foreground billboard can occlude
+later geometry. Draw opaque geometry first, order transparent draws sensibly, and
+use an explicit discard shader if cutout behavior is needed. No depth-write toggle,
+automatic sorting, alpha cutoff or shadow behavior is added here.
+
+Zero width/height draws nothing after full validation, including texture lookup,
+source bounds and basis checks. Prepared native float vertices and rotation
+intermediates must stay finite before uploads/audio/drawing begin. Pure validation
+checks the camera/basis/schema and any resolvable dimensions without a display;
+texture lookup and omitted full-image aspect resolve during a real run. Existing
+2D `texture` coordinates and defaults are unchanged.
+
+Try `nix run . -- examples/billboards.nix`: WASD moves the camera, Space toggles
+rotation, F flips UVs, and L toggles flat lighting. A generated CPU image and a
+live painted text label become world-space cards; all scene/interaction logic is
+plain Nix with no external assets.
 
 ### Model assets and skeletal poses
 
@@ -876,7 +947,7 @@ all playback/frame-selection logic is plain Nix.
 
 Lighting is opt-in inside `camera3D`; existing scenes remain unlit. Wrap solid
 `cube`, `sphere`, `plane`, `model`, `triangle3D`, `triangleStrip3D`, `cylinder`,
-`cylinderEx` and `capsule` commands in a `lighting` scope:
+`cylinderEx`, `capsule` and `billboard` commands in a `lighting` scope:
 
 ```nix
 ray.camera3D {
@@ -938,7 +1009,7 @@ missing or partial face-normal references also use this model-wide fallback,
 instead of raylib's fabricated up-vector normals. A zero interpolated normal uses
 the same face fallback. Degenerate faces have no diffuse/specular contribution.
 Skeletal poses retain native animated normals when available.
-Native triangles, cylinders and capsules do not emit vertex normals; their filled
+Native triangles, cylinders, capsules and billboards do not emit vertex normals; their filled
 commands always use geometry-derived **flat-face normals**, never stale normals
 from earlier drawing. Increasing their tessellation reduces visible faceting but
 does not switch to smooth shading. Existing cubes/spheres/planes retain their
@@ -1849,7 +1920,7 @@ Remaining dedicated drawing features include:
 | 2D convenience/precision | Dedicated native `DrawLineStrip`/single-spline-segment entry points and float-coordinate overloads; dashes, rotated rectangles, thick contours and triangle fans/strips are implemented above |
 | Text | Runtime line-gap mutation (`SetTextLineSpacing`) and float-coordinate/fractional-size entry points; rotation/pivots, signed tracking, direct scalars/arrays and UTF-8/custom glyph sets are implemented above |
 | Models/meshes | Point-cloud model drawing, nonuniform model-command scale, public custom/procedural mesh assets and instanced mesh drawing |
-| 3D textures/materials | Billboards, cubemaps, per-material texture-map reassignment and additional material-map shading; imported diffuse maps and scoped Blinn–Phong lighting already work |
+| 3D textures/materials | Cubemaps, per-material texture-map reassignment and additional material-map shading; billboards, imported diffuse maps and scoped Blinn–Phong lighting already work |
 | Images/readback | GPU/screen-to-CPU readback, decoder animation frames, noise/text generators, channel/palette/border queries, blur/convolution/dither, image compositing/text/most CPU shape drawing, general pixel-format conversion and non-PNG/code exports |
 
 Native `V`/`Rec` convenience signatures are generally folded into existing Nix

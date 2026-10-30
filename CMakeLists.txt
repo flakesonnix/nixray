@@ -16,6 +16,7 @@ add_library(nixray MODULE
     src/assets.cc
     src/image.cc
     src/texture.cc
+    src/billboard.cc
     src/texture_sampling.cc
     src/texture_effects.cc
     src/text.cc
