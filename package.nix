@@ -123,7 +123,8 @@ stdenv.mkDerivation {
         --capture-library "$PWD/nixray-test-capture.so" \
         --input-library "$PWD/nixray-test-input.so" \
         --audio-library "$PWD/nixray-test-audio.so" \
-        --window-library "$PWD/nixray-test-window.so"
+        --window-library "$PWD/nixray-test-window.so" \
+        --model-library "$PWD/nixray-test-model.so"
     runHook postCheck
   '';
 
@@ -133,6 +134,7 @@ stdenv.mkDerivation {
     test ! -e "$out/lib/nix/plugins/nixray-test-input.so"
     test ! -e "$out/lib/nix/plugins/nixray-test-audio.so"
     test ! -e "$out/lib/nix/plugins/nixray-test-window.so"
+    test ! -e "$out/lib/nix/plugins/nixray-test-model.so"
     unset WAYLAND_DISPLAY
     export XDG_SESSION_TYPE=x11
     export HOME="$TMPDIR/home"

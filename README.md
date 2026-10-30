@@ -129,7 +129,7 @@ in ray.run { width = 640; height = 480; title = "Hello Nix"; } (frame: {
 | `audio` | `false` | Opt in to an audio device, sound effects and streamed music |
 | `gestures` | All gesture codes | List of enabled `ray.gestures` integer codes; `[]` disables detection |
 | `state` | `null` | Initial application state |
-| `assets` | `{}` | Named `textures`, `fonts`, `renderTextures`, `shaders`, `sounds` and `music` maps |
+| `assets` | `{}` | Named `textures`, `fonts`, `renderTextures`, `shaders`, `sounds`, `music` and `models` maps |
 
 The callback receives a fresh attribute set each frame:
 
@@ -152,6 +152,7 @@ The callback receives a fresh attribute set each frame:
     pinchVector = { x = 0.0; y = 0.0; }; pinchAngle = 0.0; };
   audio = { enabled = false; sounds = {}; music = {}; }; # Playback snapshot
   window = { /* Immutable window state; schema below */ };
+  models = {};                      # Immutable model/animation metadata by asset name
   state = null;                     # Previous frame's application state
 }
 ```
@@ -360,6 +361,7 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `clear` | `color` |
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `camera2D` | `camera`, `commands` |
+| `camera3D` | `camera`, `commands` (3D children only) |
 | `blend` | `mode`, `commands` |
 | `shader` | `shader` (asset name), `commands` |
 | `paint` | `texture` (render texture name), `commands` |
@@ -630,6 +632,129 @@ are validated before drawing; cameras, clips, blends, shaders and paints share t
 Try `nix run . -- examples/camera.nix`: WASD pans, the wheel zooms, left/right
 arrows rotate, and a world-space marker follows the mouse beneath a fixed HUD.
 
+### 3D cameras and primitives
+
+`camera3D { camera; commands; clearDepth ? true; }` begins a depth-tested 3D pass.
+The required camera set has these optional fields:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `position` | `{ x = 0; y = 0; z = 10; }` | Camera's world position |
+| `target` | `{ x = 0; y = 0; z = 0; }` | World point to look at |
+| `up` | `{ x = 0; y = 1; z = 0; }` | Camera's up direction |
+| `projection` | `"perspective"` | `"perspective"` or `"orthographic"` |
+| `fovy` | `45` | Vertical field of view in degrees (perspective), or world-space vertical span (orthographic) |
+
+All supplied 3D points require exactly `x`, `y`, `z`, accepting finite integers
+or floats. Fovy must be positive and, for perspective, below 180 degrees even
+after native float rounding. View, projection and combined camera transforms
+must have finite native inverses. Coincident position/target, zero or parallel up
+vectors and unusable extreme numbers are rejected during pure validation too.
+Surface aspect is checked again when assets/window dimensions are known. Clip
+planes retain the linked raylib defaults; near/far controls are not exposed.
+
+The scene uses raylib's right-handed coordinates, with Y up. These commands must
+appear inside a `camera3D`, directly or through clips/blends/shaders:
+
+| `op` | Required fields besides `op` | Optional fields |
+| --- | --- | --- |
+| `cube`, `cubeWires` | `position`, `width`, `height`, `length`, `color` | — |
+| `sphere`, `sphereWires` | `position`, `radius`, `color` | `rings ? 16`, `slices ? 16` |
+| `plane` | `position`, `width`, `length`, `color` | — |
+| `line3D` | `start`, `end`, `color` | — |
+| `grid` | `slices`, `spacing` | — |
+
+Positions are 3D sets; sizes, radius and spacing are finite nonnegative numbers.
+Cubes are centered on their position. Planes lie on XZ, facing +Y. Wires and
+lines are native one-pixel geometry. Sphere rings are integers in `2..128`, slices
+in `3..256`; grid slices are integers in `0..4096`. Native grids are centered at
+the origin on XZ, use fixed gray colors, and truncate odd slice counts to the
+preceding even span. Zero extents/radii/spacing, grids with fewer than two slices,
+and collapsed lines draw nothing after full validation. Overflowing geometry
+bounds are errors. Matching `ray.cube`, `ray.sphere`, etc. construct these sets.
+
+By default each pass clears **only depth**, preserving color and respecting the
+active clip. `clearDepth = false` shares existing depth on that surface; compare
+compatible camera views when doing so. `clear` inside 3D clears color and depth,
+just as outside. Opaque depth occlusion does not depend on drawing order;
+transparency still needs sensible ordering and native depth writes remain enabled.
+No lighting is added automatically: default rendering is unlit vertex color.
+
+3D passes may live inside render-texture paints and use the target's aspect and
+depth attachment. Clips remain absolute surface coordinates. A 3D pass inside a
+2D camera suspends that camera and restores it on exit; subsequent 2D HUD drawing
+has depth testing disabled. Nested 3D cameras, 2D drawing/camera commands and paint
+scopes inside a 3D pass are rejected. All cameras, clips, blends, shaders and paints
+share the existing 64-scope budget.
+
+Try `nix run . -- examples/three-d.nix`: WASD moves the camera, P changes projection,
+and an overhead render texture shows the same scene from another camera.
+
+### Model assets and skeletal poses
+
+Models follow the same named, once-per-window asset lifecycle as textures/fonts:
+
+```nix
+assets.models = {
+  scenery = ./scenery.obj;
+  actor = { path = ./actor.glb; animations = ./actor.glb; };
+};
+```
+
+Paths accept Nix paths or absolute strings, preserving store context. OBJ, glTF
+and GLB are exercised by the tests; other formats depend on the linked raylib
+loaders. Keep external buffers, MTL files and textures beside their model when
+copying assets to the store (copy a directory, not only its model file). A GLB
+or glTF with embedded data is convenient for self-contained assets. Missing or
+empty geometry is an error, not a fallback shape. Native side-texture/material
+fallback behavior still applies if dependent files are unavailable.
+
+Inside `camera3D`, use `model` or `modelWires`:
+
+```nix
+ray.model {
+  model = "actor";
+  position = { x = 0; y = 0; z = 0; };
+  scale = 1;                              # Positive uniform scale, default 1
+  rotationAxis = { x = 0; y = 1; z = 0; };  # Default axis; nonzero, normalized
+  rotation = 45;                          # Degrees, default 0, normalized modulo 360
+  tint = ray.colors.white;                # Default white; multiplies imported material color
+  pose = { animation = 0; frame = 12; };   # Optional discrete native skeletal frame
+}
+```
+
+`model` and `position` are required; all other fields are optional. Transforms must
+remain finite and invertible, and transformed bounds must remain finite. Animation/frame indices
+are nonnegative signed 32-bit integers, checked against loaded clips; out-of-range
+frames are rejected rather than wrapped. Native loaders supply sampled frame
+arrays, not a seconds-based animation clock. Omitting `pose` explicitly draws the
+bind pose, even after an animated draw of the same named model. Different poses
+of one asset can be drawn in one frame without persistent pose leakage.
+
+`frame.models.<name>` contains immutable `meshCount`, `materialCount`, `boneCount`,
+`vertexCount`, `triangleCount`, bind-geometry `bounds = { min; max; }`, and
+`animations = [ { name; frameCount; boneCount; } ... ]`. Metadata is copied once
+and remains usable after window close. There are no manual integer handles,
+load/unload drawing commands, raw mesh pointers or GPU resources in Nix values.
+
+Models honor clips, depth, blends, fragment shader scopes and render textures.
+Imported diffuse colors/textures render through raylib materials; lighting/PBR
+controls, morph targets and custom vertex stages remain unexposed. Shader overrides
+and wireframe mode are restored after each draw. Models, animations and owned
+imported textures are released before window closure, also on partial loading or
+callback errors; shared default textures/shaders are never freed as model assets.
+
+Native imports are limited after loading to 1024 meshes, 4096 materials, 256 bones,
+one million total vertices/triangles, 256 clips, 65536 frames per clip and one
+million bone poses. Skin weights/indices, finite data and compatible skeletons
+are checked. These guards are not a sandbox for native file parsers: use trusted
+model assets. Pure command validation checks syntax/transforms but cannot resolve
+model names, imported geometry or animation bounds without loading assets.
+
+Try `nix run . -- examples/model.nix`: a hand-authored OBJ pyramid and embedded-data
+glTF skeletal asset are drawn beside a bind-pose wireframe. Space pauses animation;
+all playback/frame-selection logic is plain Nix.
+
 ### Blend modes
 
 `blend` changes how each child draw combines with pixels already in the active
@@ -807,7 +932,7 @@ contents with transparent black before the children draw. Set `clear = false`
 to accumulate across paints and frames. Children start a fresh coordinate
 system with `(0, 0)` at the texture's top-left: enclosing clips and cameras do
 not apply inside, blending starts in alpha mode, and the default shader is used.
-Paint children may freely use `clip`, `camera2D`, `blend`, `shader`, shapes, text
+Paint children may freely use `clip`, `camera2D`, `camera3D`, `blend`, `shader`, shapes, text
 and `texture`/`textureNPatch` stamps.
 Painting may not nest inside another paint, and a
 texture-stamping command may not sample the texture being painted; alternating two
@@ -1300,7 +1425,8 @@ env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 NIXRAY_TEST_SYNTH_TONES="$PWD/build/
   --capture-library "$PWD/build/nixray-test-capture.so" \
   --input-library "$PWD/build/nixray-test-input.so" \
   --audio-library "$PWD/build/nixray-test-audio.so" \
-  --window-library "$PWD/build/nixray-test-window.so"
+  --window-library "$PWD/build/nixray-test-window.so" \
+  --model-library "$PWD/build/nixray-test-model.so"
 ```
 
 Use the Nix binary from `nix develop`, not one outside that shell. The dev

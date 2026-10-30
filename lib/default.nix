@@ -2,6 +2,8 @@ rec {
   run = builtins.raylib;
   validate = commands: builtins.raylibValidate commands;
   validateAudio = actions: builtins.raylibValidateAudio actions;
+  model = args: args // { op = "model"; };
+  modelWires = args: args // { op = "modelWires"; };
   validateWindow = actions: builtins.raylibValidateWindow actions;
   version = builtins.raylibVersion;
   worldToScreen2D = builtins.raylibWorldToScreen2D;
@@ -95,6 +97,14 @@ rec {
   clear = color: { op = "clear"; inherit color; };
   clip = args: args // { op = "clip"; };
   camera2D = args: args // { op = "camera2D"; };
+  camera3D = args: args // { op = "camera3D"; };
+  cube = args: args // { op = "cube"; };
+  cubeWires = args: args // { op = "cubeWires"; };
+  sphere = args: args // { op = "sphere"; };
+  sphereWires = args: args // { op = "sphereWires"; };
+  plane = args: args // { op = "plane"; };
+  line3D = args: args // { op = "line3D"; };
+  grid = args: args // { op = "grid"; };
   blend = args: args // { op = "blend"; };
   shader = args: args // { op = "shader"; };
   paint = args: args // { op = "paint"; };

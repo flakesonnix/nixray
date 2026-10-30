@@ -41,7 +41,7 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
 {
     if (!value) return {};
     Reader r(state, pos);
-    r.fields(*value, {"textures", "fonts", "renderTextures", "shaders", "sounds", "music"});
+    r.fields(*value, {"textures", "fonts", "renderTextures", "shaders", "sounds", "music", "models"});
     auto path = [&](Value & entry) {
         state.forceValue(entry, pos);
         if (entry.type() == nString) {
@@ -125,6 +125,15 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
     });
     entries("sounds", [&](std::string name, Value & entry) {
         specs.sounds.emplace(std::move(name), path(entry));
+    });
+    entries("models", [&](std::string name, Value & entry) {
+        ModelSpec model;
+        if (entry.type() == nAttrs) {
+            r.fields(entry, {"path", "animations"});
+            model.path = path(r.required(entry, "path"));
+            if (auto * animations = r.optional(entry, "animations")) model.animations = path(*animations);
+        } else model.path = path(entry);
+        specs.models.emplace(std::move(name), std::move(model));
     });
     entries("music", [&](std::string name, Value & entry) {
         MusicSpec music;
@@ -226,6 +235,10 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
         musicTracks.emplace(name, std::move(music));
         musicLabels.push_back(name);
     }
+    for (const auto & [name, spec] : specs.models) {
+        models.emplace(name, loadModelAsset(spec, name, r));
+        modelLabels.push_back(name);
+    }
 }
 
 const Texture2D * Assets::texture(const std::string & name) const
@@ -278,6 +291,12 @@ bool Assets::musicCanSeek(const std::string & name) const
 void Assets::updateMusic() const
 {
     for (const auto & [name, track] : musicTracks) UpdateMusicStream(*track);
+}
+
+const ModelAsset * Assets::model(const std::string & name) const
+{
+    auto found = models.find(name);
+    return found == models.end() ? nullptr : found->second.get();
 }
 
 } // namespace nixray

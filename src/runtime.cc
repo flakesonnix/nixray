@@ -6,6 +6,7 @@
 #include "text.hh"
 #include "audio.hh"
 #include "window.hh"
+#include "model.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
@@ -95,12 +96,14 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
     // Assets (including partial loads) are destroyed before device and Window.
     Assets assets(specs, r);
     auto measureText = allocRootValue(textMeasurer(state, assets, specs));
+    auto models = allocRootValue(state.allocValue());
+    modelSnapshot(state, assets, **models);
     SetTargetFPS(fps);
 
     int64_t frames = 0;
     while ((!maxFrames || frames < maxFrames) && !WindowShouldClose()) {
         checkInterrupt();
-        auto frame = state.buildBindings(23);
+        auto frame = state.buildBindings(24);
         frame.alloc("frame").mkInt(frames);
         frame.alloc("time").mkFloat(GetTime());
         frame.alloc("delta").mkFloat(GetFrameTime());
@@ -111,6 +114,7 @@ void run(EvalState & state, PosIdx pos, Value ** args, Value & out)
         windowSnapshot(state, windowState, frame.alloc("window"));
         frame.insert(state.symbols.create("state"), *current);
         frame.insert(state.symbols.create("measureText"), *measureText);
+        frame.insert(state.symbols.create("models"), *models);
         // Callbacks may retain their input inside state (including closures).
         // Never hand the evaluator a pointer to a stack-allocated Value.
         auto input = allocRootValue(state.allocValue());

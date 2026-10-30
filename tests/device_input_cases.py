@@ -157,7 +157,7 @@ class DeviceInputCases:
           id = builtins.typeOf (builtins.head frame.touches).id;
           hold = builtins.typeOf frame.gesture.holdDuration;
           fields = builtins.length (builtins.attrNames frame);
-        }''', frames=1), [{"pad": "set", "axis": "float", "button": "int", "touch": "float", "id": "int", "hold": "float", "fields": 23}])
+        }''', frames=1), [{"pad": "set", "axis": "float", "button": "int", "touch": "float", "id": "int", "hold": "float", "fields": 24}])
 
     def test_device_input_ignored_fields_still_poll_once(self):
         # The native fixture aborts on duplicate, missing or out-of-bounds queries.

@@ -20,6 +20,7 @@ RegisterPrimOp raylibOp({
            "Optional config.assets declares named textures and fonts loaded once per window "
            "and named render textures started transparent, plus fragment shaders with typed uniform defaults. "
            "Snapshots include press/release states, two-axis wheel deltas and UTF-8 text input. "
+           "config.assets.models loads named models/animations once; frame.models contains immutable metadata. "
            "frame.measureText measures text using the default or a named font. "
            "Opt-in config.audio enables sound/music assets and playback snapshots under frame.audio. "
            "frame.window snapshots window state; callback.window actions apply after drawing. "

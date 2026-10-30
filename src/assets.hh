@@ -2,6 +2,7 @@
 
 #include <nix/expr/eval.hh>
 #include "shader.hh"
+#include "model.hh"
 #include <raylib.h>
 #include <map>
 #include <memory>
@@ -48,6 +49,7 @@ struct AssetSpecs {
     std::map<std::string, ShaderSpec> shaders;
     std::map<std::string, std::string> sounds;
     std::map<std::string, MusicSpec> music;
+    std::map<std::string, ModelSpec> models;
 };
 
 AssetSpecs assetSpecs(nix::EvalState & state, nix::PosIdx pos, nix::Value * value);
@@ -68,6 +70,8 @@ class Assets {
     std::map<std::string, std::unique_ptr<Music, MusicDeleter>> musicTracks;
     std::set<std::string> seekableMusic;
     std::vector<std::string> soundLabels, musicLabels;
+    std::map<std::string, std::unique_ptr<ModelAsset>> models;
+    std::vector<std::string> modelLabels;
 
 public:
     Assets(const AssetSpecs & specs, const Reader & reader);
@@ -85,6 +89,8 @@ public:
     const std::vector<std::string> & soundNames() const { return soundLabels; }
     const std::vector<std::string> & musicNames() const { return musicLabels; }
     void updateMusic() const;
+    const ModelAsset * model(const std::string & name) const;
+    const std::vector<std::string> & modelNames() const { return modelLabels; }
 };
 
 } // namespace nixray
