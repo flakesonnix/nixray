@@ -376,18 +376,23 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `texture` | `texture` (asset name), `x`, `y` |
 | `textureNPatch` | `texture`, `x`, `y`, `width`, `height`, `borders = { left; top; right; bottom; }` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
+| `rectanglePro` | `x`, `y`, `width`, `height`, `color` (optional `origin`, `rotation`) |
+| `rectangleLinesEx` | `x`, `y`, `width`, `height`, `thickness`, `color` |
 | `rectangleGradientV` | `x`, `y`, `width`, `height`, `top`, `bottom` |
 | `rectangleGradientH` | `x`, `y`, `width`, `height`, `left`, `right` |
 | `rectangleGradientEx` | `x`, `y`, `width`, `height`, `topLeft`, `bottomLeft`, `bottomRight`, `topRight` |
 | `rectangleRounded`, `rectangleRoundedLines` | `x`, `y`, `width`, `height`, `roundness`, `color` |
+| `rectangleRoundedLinesEx` | `x`, `y`, `width`, `height`, `roundness`, `thickness`, `color` |
 | `circle`, `circleLines` | `x`, `y`, `radius`, `color` |
 | `circleGradient` | `x`, `y`, `radius`, `inner`, `outer` |
 | `circleSector`, `circleSectorLines` | `x`, `y`, `radius`, `startAngle`, `endAngle`, `color` |
 | `ring`, `ringLines` | `x`, `y`, `innerRadius`, `outerRadius`, `startAngle`, `endAngle`, `color` |
 | `ellipse`, `ellipseLines` | `x`, `y`, `radiusX`, `radiusY`, `color` |
 | `triangle`, `triangleLines` | `x1`, `y1`, `x2`, `y2`, `x3`, `y3`, `color` |
+| `triangleFan`, `triangleStrip` | `points = [ { x; y; } ... ]`, `color` |
 | `line` | `x1`, `y1`, `x2`, `y2`, `color` |
 | `lineEx` | `x1`, `y1`, `x2`, `y2`, `thickness`, `color` |
+| `lineDashed` | `x1`, `y1`, `x2`, `y2`, `dashSize`, `spaceSize`, `color` |
 | `poly`, `polyLines` | `x`, `y`, `sides`, `radius`, `color` |
 | `polyLinesEx` | `x`, `y`, `sides`, `radius`, `thickness`, `color` |
 | `lineBezier` | `x1`, `y1`, `x2`, `y2`, `thickness`, `color` |
@@ -556,6 +561,57 @@ All nine commands honor clips, cameras, blends, shaders and render textures.
 `ray.validate` performs the same point/count/work-limit checks without opening
 a window. Try `nix run . -- examples/curves.nix`: the mouse wheel adjusts stroke
 thickness; Space toggles control guides. The entire demonstration is plain Nix.
+
+#### Dashes, rectangle transforms and grouped triangles
+
+`lineDashed` draws native one-pixel line segments using integer endpoints,
+positive signed 32-bit `dashSize` and nonnegative signed 32-bit `spaceSize`.
+Lengths use drawing-coordinate units, so a camera scales the gaps too. The
+pattern starts at the first endpoint; reversing endpoints changes its phase.
+The final dash is truncated at the end. Like native raylib, a nonzero line shorter
+than `dashSize + spaceSize` draws solid instead; equality still uses the pattern.
+Zero gap is also drawn as one solid line. Coincident native float endpoints draw
+nothing. At most 65536 dashes may be generated per command; this is checked even
+inside invisible clips. Bounded double-precision preparation avoids native integer
+sum overflow and nonadvancing float loops at extreme coordinates.
+
+`rectanglePro` uses integer `x`, `y`, nonnegative integer `width`, `height`, and a
+color. Optional `rotation ? 0` is finite clockwise degrees, normalized modulo 360;
+optional `origin ? { x = 0; y = 0; }` uses finite numeric pixel offsets from the
+rectangle's top-left before rotation. The origin is placed at `(x, y)`. Negative
+and outside pivots are allowed while native transformed bounds remain finite.
+Defaults match the existing filled rectangle. A zero dimension draws nothing.
+
+The two thick contour commands deliberately retain different placements:
+
+- `rectangleLinesEx` stays **inside** its rectangle. Numeric `thickness` is finite
+  and nonnegative. Once it reaches half the smaller dimension, the rectangle fills
+  once rather than inverting or repeatedly blending overlapping borders.
+- `rectangleRoundedLinesEx` expands **outside** the requested rounded rectangle,
+  matching raylib's outward contour and half-pixel conventions. `roundness` and
+  optional `segments` follow existing rounded rectangles: finite `0..1`, and
+  `0` (automatic) or integer `4..4096`. Automatic sampling uses the outer radius
+  and remains bounded. Roundness zero gives an outward rectangular border, not
+  the inside border above. Positive thickness at most one uses native one-pixel
+  line rendering; larger thickness uses filled contour geometry.
+
+Both contour commands draw nothing for zero thickness or zero rectangle area,
+after full validation; overflowing outward bounds are errors. These are native
+rasterized contours, not analytically antialiased strokes.
+
+`triangleFan` and `triangleStrip` take **3..4096** `{ x; y; }` points with signed
+32-bit integer coordinates. A fan joins each consecutive rim pair to point zero;
+it does **not** implicitly close the rim, so repeat its first rim point to close
+a centered fan. A strip draws consecutive overlapping triples. Each generated
+triangle accepts either winding, matching existing `triangle`; degenerate native
+float triangles are skipped. Shared edges have ordinary triangle rasterization;
+explicit overlapping triangles still blend repeatedly. This is not general
+concave-polygon triangulation.
+
+All six commands support clips, 2D cameras, blends, shaders and render textures,
+and are checked by pure `ray.validate`. Try
+`nix run . -- examples/drawing-extra.nix`: the wheel adjusts contour thickness;
+Space reverses triangle winding and changes dash gaps. All scene logic is Nix.
 
 ### Clipping
 
@@ -1670,7 +1726,7 @@ Remaining dedicated drawing features include:
 
 | Area | Not exposed |
 | --- | --- |
-| 2D shapes | `DrawLineDashed`, rotated rectangles (`DrawRectanglePro`), thick rectangle/rounded contours (`DrawRectangleLinesEx`, `DrawRectangleRoundedLinesEx`), triangle fans/strips |
+| 2D convenience/precision | Dedicated native `DrawLineStrip`/single-spline-segment entry points and float-coordinate overloads; dashes, rotated rectangles, thick contours and triangle fans/strips are implemented above |
 | Text | Rotated/pivoted text (`DrawTextPro`), configurable glyph spacing, direct codepoint-list entry points; normal UTF-8 text and custom glyph sets already work |
 | 3D primitives | Native 3D circles, filled triangles/triangle strips, cylinders/cones and capsules (including native wire variants) |
 | Models/meshes | Point-cloud model drawing, nonuniform model-command scale, public custom/procedural mesh assets and instanced mesh drawing |
@@ -1678,7 +1734,8 @@ Remaining dedicated drawing features include:
 | Images/readback | GPU/screen-to-CPU readback, decoder animation frames, noise/text generators, channel/palette/border queries, blur/convolution/dither, image compositing/text/most CPU shape drawing, general pixel-format conversion and non-PNG/code exports |
 
 Native `V`/`Rec` convenience signatures are generally folded into existing Nix
-constructors, not counted as separate missing features. Likewise `splineLinear`
+constructors, not counted as separate shape families; drawing coordinates retain
+their documented integer limits rather than exposing every float overload. Likewise `splineLinear`
 already draws polylines; individual spline spans can be expressed by their point
 lists. A dedicated native GL line-strip entry point is not exposed. Native 3D
 point/ray/bounding-box convenience commands are absent, but their geometry is

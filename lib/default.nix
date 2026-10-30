@@ -124,6 +124,12 @@ rec {
   textureNPatch = args: args // { op = "textureNPatch"; };
   rectangle = args: args // { op = "rectangle"; };
   rectangleLines = args: args // { op = "rectangleLines"; };
+  rectanglePro = args: args // { op = "rectanglePro"; };
+  rectangleLinesEx = args: args // { op = "rectangleLinesEx"; };
+  rectangleRoundedLinesEx = args: args // { op = "rectangleRoundedLinesEx"; };
+  triangleFan = args: args // { op = "triangleFan"; };
+  triangleStrip = args: args // { op = "triangleStrip"; };
+  lineDashed = args: args // { op = "lineDashed"; };
   rectangleGradientV = args: args // { op = "rectangleGradientV"; };
   rectangleGradientH = args: args // { op = "rectangleGradientH"; };
   rectangleGradientEx = args: args // { op = "rectangleGradientEx"; };

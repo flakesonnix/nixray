@@ -2,14 +2,44 @@
 #include "reader.hh"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
+#include <utility>
 
 namespace nixray {
 
 namespace {
 
 constexpr int maxSegments = 4096;
+
+Vector2 drawingPoint(const Reader & r, Value & value)
+{
+    r.fields(value, {"x", "y"});
+    return {static_cast<float>(r.integerAttr(value, "x")), static_cast<float>(r.integerAttr(value, "y"))};
+}
+
+void addTriangle(std::vector<Vector2> & vertices, Vector2 a, Vector2 b, Vector2 c)
+{
+    double area = (static_cast<double>(b.x) - a.x)*(static_cast<double>(c.y) - a.y) -
+                  (static_cast<double>(b.y) - a.y)*(static_cast<double>(c.x) - a.x);
+    if (area == 0) return;
+    if (area > 0) std::swap(b, c);
+    vertices.insert(vertices.end(), {a, b, c});
+}
+
+void outwardBounds(const Reader & r, Rectangle rec, float thickness)
+{
+    double maximum = std::numeric_limits<float>::max();
+    double w = rec.width + 2.0*thickness, h = rec.height + 2.0*thickness;
+    if (w > maximum || h > maximum ||
+        std::abs(static_cast<double>(rec.x) - thickness) > maximum ||
+        std::abs(static_cast<double>(rec.y) - thickness) > maximum ||
+        std::abs(static_cast<double>(rec.x) + rec.width + thickness) > maximum ||
+        std::abs(static_cast<double>(rec.y) + rec.height + thickness) > maximum)
+        r.fail("rounded rectangle outline bounds must remain finite");
+}
 
 int cornerSegments(float radius, bool outline)
 {
@@ -52,6 +82,87 @@ Arc arcSpec(const Reader & r, Value & value, float radius)
 Command shapeCommand(EvalState & state, PosIdx pos, Value & value, const std::string & op)
 {
     Reader r(state, pos);
+    if (op == "triangleFan" || op == "triangleStrip") {
+        r.fields(value, {"op", "points", "color"});
+        auto & points = r.required(value, "points");
+        state.forceList(points, pos, context);
+        if (points.listSize() < 3 || points.listSize() > maxSegments)
+            r.fail("'points' must contain between 3 and 4096 points");
+        std::vector<Vector2> controls, triangles;
+        controls.reserve(points.listSize());
+        triangles.reserve((points.listSize() - 2)*3);
+        for (auto * p : points.listView()) controls.push_back(drawingPoint(r, *p));
+        for (size_t i = 2; i < controls.size(); ++i)
+            addTriangle(triangles, controls[op == "triangleFan" ? 0 : i - 2], controls[i - 1], controls[i]);
+        auto color = r.color(r.required(value, "color"));
+        return [triangles = std::move(triangles), color] {
+            for (size_t i = 0; i < triangles.size(); i += 3) DrawTriangle(triangles[i], triangles[i + 1], triangles[i + 2], color);
+        };
+    }
+    if (op == "lineDashed") {
+        r.fields(value, {"op", "x1", "y1", "x2", "y2", "dashSize", "spaceSize", "color"});
+        Vector2 a{static_cast<float>(r.integerAttr(value, "x1")), static_cast<float>(r.integerAttr(value, "y1"))};
+        Vector2 b{static_cast<float>(r.integerAttr(value, "x2")), static_cast<float>(r.integerAttr(value, "y2"))};
+        int dash = r.integerAttr(value, "dashSize", 1), space = r.integerAttr(value, "spaceSize", 0);
+        auto color = r.color(r.required(value, "color"));
+        double dx = static_cast<double>(b.x) - a.x, dy = static_cast<double>(b.y) - a.y;
+        double length = std::hypot(dx, dy), period = static_cast<double>(dash) + space;
+        if (length == 0) return [] {};
+        if (space == 0 || length < period) return [=] { DrawLineV(a, b, color); };
+        double count = std::ceil(length/period);
+        if (count > 65536) r.fail("dashed line must not exceed 65536 dashes");
+        std::vector<std::array<Vector2, 2>> dashes;
+        dashes.reserve(static_cast<size_t>(count));
+        auto sample = [&](double distance) {
+            double t = distance/length;
+            return Vector2{static_cast<float>(a.x + t*dx), static_cast<float>(a.y + t*dy)};
+        };
+        // Do not call native DrawLineDashed's float-progress loop: at large
+        // coordinates it can stop advancing, and dash + space can overflow int.
+        for (size_t i = 0; i < static_cast<size_t>(count); ++i) {
+            double start = i*period;
+            auto from = sample(start), to = sample(std::min(length, start + dash));
+            if (from.x != to.x || from.y != to.y) dashes.push_back({from, to});
+        }
+        return [dashes = std::move(dashes), color] { for (const auto & dash : dashes) DrawLineV(dash[0], dash[1], color); };
+    }
+    if (op == "rectanglePro" || op == "rectangleLinesEx") {
+        bool outline = op == "rectangleLinesEx";
+        r.fields(value, outline ? std::initializer_list<std::string_view>{"op", "x", "y", "width", "height", "thickness", "color"}
+                                : std::initializer_list<std::string_view>{"op", "x", "y", "width", "height", "rotation", "origin", "color"});
+        Rectangle rec{static_cast<float>(r.integerAttr(value, "x")), static_cast<float>(r.integerAttr(value, "y")),
+                      static_cast<float>(r.integerAttr(value, "width", 0)), static_cast<float>(r.integerAttr(value, "height", 0))};
+        auto color = r.color(r.required(value, "color"));
+        if (outline) {
+            float thickness = r.number(r.required(value, "thickness"), "thickness", 0);
+            return [=] {
+                if (rec.width == 0 || rec.height == 0 || thickness == 0) return;
+                // Native borders can overlap (or invert) once they consume the
+                // interior. Fill once instead, preserving translucent coverage.
+                if (thickness >= std::min(rec.width, rec.height)/2) DrawRectangleRec(rec, color);
+                else DrawRectangleLinesEx(rec, thickness, color);
+            };
+        }
+        Vector2 origin{};
+        if (auto * v = r.optional(value, "origin")) {
+            r.fields(*v, {"x", "y"});
+            origin = {r.number(r.required(*v, "x"), "origin.x"), r.number(r.required(*v, "y"), "origin.y")};
+        }
+        double angle = 0;
+        if (auto * v = r.optional(value, "rotation")) angle = r.numberDouble(*v, "rotation");
+        float rotation = static_cast<float>(std::fmod(angle, 360.0));
+        double reachX = std::max(std::abs(static_cast<double>(origin.x)), std::abs(static_cast<double>(rec.width) - origin.x));
+        double reachY = std::max(std::abs(static_cast<double>(origin.y)), std::abs(static_cast<double>(rec.height) - origin.y));
+        if (std::hypot(reachX, reachY) > std::numeric_limits<float>::max()) r.fail("rotated rectangle bounds must remain finite");
+        float sine = std::sin(rotation*DEG2RAD), cosine = std::cos(rotation*DEG2RAD);
+        for (int corner = 0; corner < 4; ++corner) {
+            float dx = -origin.x + (corner & 1 ? rec.width : 0), dy = -origin.y + (corner & 2 ? rec.height : 0);
+            float x = rotation == 0 ? rec.x - origin.x + (corner & 1 ? rec.width : 0) : rec.x + dx*cosine - dy*sine;
+            float y = rotation == 0 ? rec.y - origin.y + (corner & 2 ? rec.height : 0) : rec.y + dx*sine + dy*cosine;
+            if (!std::isfinite(x) || !std::isfinite(y)) r.fail("rotated rectangle bounds must remain finite");
+        }
+        return [=] { if (rec.width > 0 && rec.height > 0) DrawRectanglePro(rec, origin, rotation, color); };
+    }
     if (op == "poly" || op == "polyLines" || op == "polyLinesEx") {
         bool thick = op == "polyLinesEx";
         if (thick) r.fields(value, {"op", "x", "y", "sides", "radius", "rotation", "thickness", "color"});
@@ -162,8 +273,10 @@ Command shapeCommand(EvalState & state, PosIdx pos, Value & value, const std::st
             else DrawEllipse(x, y, radiusX, radiusY, color);
         };
     }
-    if (op == "rectangleRounded" || op == "rectangleRoundedLines") {
-        r.fields(value, {"op", "x", "y", "width", "height", "roundness", "segments", "color"});
+    if (op == "rectangleRounded" || op == "rectangleRoundedLines" || op == "rectangleRoundedLinesEx") {
+        bool thick = op == "rectangleRoundedLinesEx";
+        r.fields(value, thick ? std::initializer_list<std::string_view>{"op", "x", "y", "width", "height", "roundness", "segments", "thickness", "color"}
+                              : std::initializer_list<std::string_view>{"op", "x", "y", "width", "height", "roundness", "segments", "color"});
         Rectangle rectangle{static_cast<float>(r.integerAttr(value, "x")),
                             static_cast<float>(r.integerAttr(value, "y")),
                             static_cast<float>(r.integerAttr(value, "width", 0)),
@@ -173,13 +286,16 @@ Command shapeCommand(EvalState & state, PosIdx pos, Value & value, const std::st
         if (auto * count = r.optional(value, "segments")) segments = r.integer(*count, "segments", 0, maxSegments);
         if (segments > 0 && segments < 4) r.fail("'segments' must be 0 (automatic) or an integer in [4, 4096]");
         auto color = r.color(r.required(value, "color"));
-        bool outline = op == "rectangleRoundedLines";
+        bool outline = op != "rectangleRounded";
+        float thickness = thick ? r.number(r.required(value, "thickness"), "thickness", 0) : 0;
+        if (thick) outwardBounds(r, rectangle, thickness);
         float radius = std::min(rectangle.width, rectangle.height) * roundness / 2;
         if (radius == 0) roundness = 0;
-        if (!segments) segments = cornerSegments(radius, outline);
+        if (!segments) segments = cornerSegments(radius + thickness, outline);
         return [=] {
             if (rectangle.width == 0 || rectangle.height == 0) return;
-            if (outline) DrawRectangleRoundedLines(rectangle, roundness, segments, color);
+            if (thick) { if (thickness > 0) DrawRectangleRoundedLinesEx(rectangle, roundness, segments, thickness, color); }
+            else if (outline) DrawRectangleRoundedLines(rectangle, roundness, segments, color);
             else DrawRectangleRounded(rectangle, roundness, segments, color);
         };
     }

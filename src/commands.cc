@@ -158,7 +158,9 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
                    op == "rectangleRounded" || op == "rectangleRoundedLines" || op == "lineEx" ||
                    op == "rectangleGradientV" || op == "rectangleGradientH" || op == "rectangleGradientEx" ||
                    op == "circleGradient" || op == "circleSector" || op == "circleSectorLines" ||
-                   op == "ring" || op == "ringLines" || op == "poly" || op == "polyLines" || op == "polyLinesEx") {
+                   op == "ring" || op == "ringLines" || op == "poly" || op == "polyLines" || op == "polyLinesEx" ||
+                   op == "lineDashed" || op == "rectanglePro" || op == "rectangleLinesEx" || op == "rectangleRoundedLinesEx" ||
+                   op == "triangleFan" || op == "triangleStrip") {
             result.emplace_back(shapeCommand(state, pos, *entry, op));
         } else if (op == "rectangle" || op == "rectangleLines") {
             r.fields(*entry, {"op", "x", "y", "width", "height", "color"});
