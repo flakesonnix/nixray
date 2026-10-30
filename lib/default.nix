@@ -6,6 +6,12 @@ rec {
   modelWires = args: args // { op = "modelWires"; };
   validateWindow = actions: builtins.raylibValidateWindow actions;
   version = builtins.raylibVersion;
+  loadImage = builtins.raylibLoadImage;
+  genImage = builtins.raylibGenImage;
+  imageTransform = builtins.raylibImageTransform;
+  imageInfo = builtins.raylibImageInfo;
+  imagePixel = builtins.raylibImagePixel;
+  exportImage = builtins.raylibExportImage;
   worldToScreen2D = builtins.raylibWorldToScreen2D;
   screenToWorld2D = builtins.raylibScreenToWorld2D;
   checkCollisionRecs = builtins.raylibCheckCollisionRecs;

@@ -14,6 +14,7 @@ add_library(nixray MODULE
     src/window.cc
     src/input.cc
     src/assets.cc
+    src/image.cc
     src/texture.cc
     src/text.cc
     src/shapes.cc

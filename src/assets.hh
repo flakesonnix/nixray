@@ -4,6 +4,7 @@
 #include "shader.hh"
 #include "model.hh"
 #include "lighting.hh"
+#include "image.hh"
 #include <raylib.h>
 #include <map>
 #include <memory>
@@ -30,6 +31,7 @@ struct TextureOptions {
 
 struct TextureSpec {
     std::string path;
+    std::shared_ptr<const ImageData> image;
     TextureOptions options;
 };
 

@@ -74,6 +74,9 @@ Loading the plugin registers:
 - `builtins.raylibValidateWindow actions`: validate a flat window action list and
   return its length. Pure; no display, window or native mutations.
 - `builtins.raylibVersion`: linked raylib version string.
+- `builtins.raylibLoadImage`, `raylibGenImage`, `raylibImageTransform`,
+  `raylibImageInfo`, `raylibImagePixel` and `raylibExportImage`: standalone CPU
+  images and explicit PNG export; no window required. See [CPU images](#cpu-images).
 - `builtins.raylibWorldToScreen2D camera point` and
   `builtins.raylibScreenToWorld2D camera point`: pure coordinate conversions;
   no display or window required.
@@ -1110,6 +1113,114 @@ names, uniform schemas and GLSL types resolve only in a real window run.
 Try `nix run . -- examples/shader.nix`: the same render texture is stamped normally
 and through a tint/gain shader. The mouse wheel changes gain, while labels outside
 the shader scope retain their original colors.
+
+### CPU images
+
+Images are immutable CPU values, independent of windows and GPU resources. The
+following `ray` helpers alias `builtins.raylibLoadImage`, etc.:
+
+| Helper | Arguments and result |
+| --- | --- |
+| `ray.loadImage path` | Decode a Nix path or absolute context-bearing string into an image |
+| `ray.genImage options` | Generate an image; schemas below |
+| `ray.imageTransform image operations` | Apply an ordered operation list to a copy; input never changes |
+| `ray.imageInfo image` | Return `{ width; height; format = "rgba8"; }` |
+| `ray.imagePixel image { x; y; }` | Read byte RGBA `[ r g b a ]`; integer coordinates must be in bounds |
+| `ray.exportImage { image; path; }` | Write a **new** PNG file and return its absolute path string; impure only |
+
+Generation, transformation and queries are pure and need no display. Loading reads
+through Nix's source accessor, preserving store contexts and normal pure/restricted
+path-access rules; it cannot bypass those rules through a native physical path.
+Formats follow the linked raylib decoders: PNG is covered by exact pixel tests.
+Uncompressed byte and packed 16-bit inputs normalize to RGBA8; float/HDR and
+compressed texture formats are rejected. Only the base mip level is retained.
+Native decoders are **not sandboxed**; use trusted image files. Decoded size checks
+happen after native decoding, not before a decoder's own allocations.
+
+All generators require integer `width` and `height`. `kind` defaults to `"solid"`:
+
+| `kind` | Additional fields |
+| --- | --- |
+| `solid` | `color` (byte RGBA) |
+| `checked` | `checksX`, `checksY` (positive integer cell sizes, at most 16384), `color1`, `color2` |
+| `gradientLinear` | `start`, `end` colors; `direction ? 0` (integer `0..360` degrees); both dimensions at least 2 |
+| `gradientRadial`, `gradientSquare` | `inner`, `outer` colors; `density ? 0` (finite `0..1`, strictly below 1 after float conversion) |
+
+Gradients preserve native raylib sampling/rounding, not guaranteed exact endpoint
+colors. Linear direction `0` runs top to bottom; `90` runs left to right.
+Density controls the solid inner region before fading to the outer color.
+
+```nix
+let
+  ray = import ./lib;
+  original = ray.genImage { width = 32; height = 32; color = ray.colors.orange; };
+  edited = ray.imageTransform original [
+    { op = "drawRectangle"; x = 8; y = 8; width = 16; height = 16; color = ray.colors.blue; }
+    { op = "resizeNN"; width = 128; height = 128; }
+    { op = "flipHorizontal"; }
+  ];
+in ray.imageInfo edited
+```
+
+Transform operations accept only these fields besides `op`:
+
+| `op` | Fields and behavior |
+| --- | --- |
+| `crop` | `x`, `y`, positive `width`, `height`; rectangle must fit the current image |
+| `resize`, `resizeNN` | Positive `width`, `height`; native bicubic or nearest-neighbor sampling |
+| `resizeCanvas` | Positive `width`, `height`, signed 32-bit `offsetX`, `offsetY`, `fill` color; clipped copy onto a filled canvas, including when dimensions stay unchanged |
+| `flipHorizontal`, `flipVertical` | None |
+| `rotateCW`, `rotateCCW` | None; exact 90-degree rotations, swapping dimensions |
+| `rotate` | Integer `degrees` in `-359..359`; positive clockwise; quarter turns are exact, other angles use native bilinear sampling, truncated expanded bounds and transparent fill |
+| `colorTint` | `color`; multiply RGBA channels |
+| `colorInvert` | None; invert RGB, preserve alpha |
+| `colorGrayscale` | None; luminance RGB, **preserve alpha** (unlike native grayscale-format conversion) |
+| `colorContrast` | Finite `value` in `-100..100`; preserve alpha |
+| `colorBrightness` | Integer `value` in `-255..255`; preserve alpha |
+| `colorReplace` | `color`, `replace`; exact RGBA match |
+| `alphaClear` | `color`, finite `threshold` in `0..1`; replace pixels whose alpha is at or below the native byte threshold |
+| `alphaCrop` | Finite `threshold` in `0..1`; crop to pixels above the byte threshold; an entirely empty result retains the original image |
+| `alphaMask` | `image` of matching dimensions; replace alpha with mask RGB luminance, **not its alpha** |
+| `alphaPremultiply` | None; multiply RGB by alpha, leaving alpha unchanged |
+| `drawPixel` | Integer in-bounds `x`, `y`, `color`; replace the pixel |
+| `drawRectangle` | Nonnegative integer `x`, `y`, `width`, `height`, `color`; rectangle must fit; zero area does nothing |
+
+Dimensions are in `1..16384`, with at most **4194304 pixels per image**. Encoded
+inputs are capped at 64 MiB. A transform list has at most 256 operations and a
+conservative 67108864 pixel-work budget: initial pixel count, plus four times the
+sum of pre/post-operation pixel counts for each operation. This also applies to
+no-ops. Inputs remain usable after failed transforms. These are per-call guards,
+not a total memory or native CPU-time guarantee; retaining images retains memory.
+Native pixel allocation pressure periodically requests evaluator garbage collection.
+
+Image values have type `"nixray-image"`; they are not JSON-serializable, coercible
+to paths, GPU handles, or mutable references. Serialize metadata/pixels instead.
+They can outlive a closed window, be reused in later windows, and supply textures:
+
+```nix
+assets.textures.logo = { image = edited; filter = "bilinear"; wrap = "clamp"; };
+```
+
+Texture option sets require exactly one of `path` or `image`; existing path-only
+assets are unchanged. Upload copies CPU pixels to the GPU once per window and
+does not mutate the image. Premultiplied image pixels do **not** automatically
+select a premultiplied blend mode; normal texture drawing still uses its usual
+alpha equation.
+
+Export requires impure, unrestricted evaluation and an absolute, context-free
+`.png` **string**, not a Nix path. The parent directory must already exist.
+Existing files, directories and symlinks are never replaced. Encoding/writing
+finishes in an owner-only temporary file beside the destination, then an atomic
+hard link publishes it without overwriting; failures clean up that temporary.
+The filesystem must support hard links. The exported file remains owner-only;
+publication is atomic, not a crash-durability guarantee. There is no implicit export.
+Like other side-effecting Nix builtins, export occurs when forced and a bound
+result is memoized; it is not a frame action or a rollback transaction.
+
+Try `nix run . -- examples/images.nix`: Space inverts an edited copy while its
+generated source stays unchanged. To also export the edited image before opening
+the window, explicitly add `--argstr output /absolute/new-image.png`. All generation,
+edit selection and interaction logic is plain Nix; no Python is used by the demo.
 
 ### Textures and fonts
 

@@ -7,10 +7,10 @@
 #include "audio.hh"
 #include "window.hh"
 #include "model.hh"
+#include "log.hh"
 
 #include <nix/expr/eval-settings.hh>
 #include <nix/util/signals.hh>
-#include <cstdio>
 #include <cstdlib>
 
 namespace nixray {
@@ -20,13 +20,7 @@ namespace {
 struct Window {
     Window(int width, int height, const std::string & title, bool hidden, bool resizable)
     {
-        // Raylib's default logger uses stdout, which would corrupt --json.
-        SetTraceLogCallback([](int, const char * message, va_list args) {
-            std::fputs("nixray: ", stderr);
-            std::vfprintf(stderr, message, args);
-            std::fputc('\n', stderr);
-        });
-        SetTraceLogLevel(LOG_WARNING);
+        configureLogging();
         SetConfigFlags((hidden ? FLAG_WINDOW_HIDDEN : 0) |
                        (resizable ? FLAG_WINDOW_RESIZABLE : 0));
         // Empty titles must still replace raylib's pointer from a previous run.

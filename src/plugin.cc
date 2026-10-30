@@ -4,6 +4,7 @@
 #include "collision.hh"
 #include "audio.hh"
 #include "window.hh"
+#include "image.hh"
 
 #include <nix/expr/primops.hh>
 #include <raylib.h>
@@ -80,6 +81,37 @@ RegisterPrimOp versionOp({
         out.mkString(RAYLIB_VERSION, state.mem);
     },
     .experimentalFeature = std::nullopt,
+});
+
+RegisterPrimOp loadImageOp({
+    .name = "__raylibLoadImage", .args = {"path"}, .arity = 1,
+    .doc = "Decode a permitted Nix path or absolute string into an immutable CPU RGBA8 image. No display required.",
+    .impl = loadImage, .experimentalFeature = std::nullopt,
+});
+RegisterPrimOp genImageOp({
+    .name = "__raylibGenImage", .args = {"options"}, .arity = 1,
+    .doc = "Generate an immutable CPU RGBA8 image: solid, checked or gradient. Pure; no display required.",
+    .impl = genImage, .experimentalFeature = std::nullopt,
+});
+RegisterPrimOp imageTransformOp({
+    .name = "__raylibImageTransform", .args = {"image", "operations"}, .arity = 2,
+    .doc = "Apply a bounded list of image operations to a copy; never mutate the input. Pure; no display required.",
+    .impl = imageTransform, .experimentalFeature = std::nullopt,
+});
+RegisterPrimOp imageInfoOp({
+    .name = "__raylibImageInfo", .args = {"image"}, .arity = 1,
+    .doc = "Get serializable { width; height; format = rgba8; } image metadata. Pure.",
+    .impl = imageInfo, .experimentalFeature = std::nullopt,
+});
+RegisterPrimOp imagePixelOp({
+    .name = "__raylibImagePixel", .args = {"image", "point"}, .arity = 2,
+    .doc = "Read an image pixel at integer { x; y; } as [r g b a]. Out-of-bounds coordinates are errors. Pure.",
+    .impl = imagePixel, .experimentalFeature = std::nullopt,
+});
+RegisterPrimOp exportImageOp({
+    .name = "__raylibExportImage", .args = {"options"}, .arity = 1,
+    .doc = "Export { image; path; } to a new absolute PNG destination; never overwrite. Return path. Impure, unrestricted evaluation only.",
+    .impl = exportImage, .experimentalFeature = std::nullopt,
 });
 
 RegisterPrimOp worldToScreenOp({

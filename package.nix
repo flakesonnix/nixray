@@ -203,6 +203,18 @@ EOF
     fi
     printf '%s\n' "$lighting_output"
     printf '%s\n' "$lighting_output" | grep -q '"frames":2,"state":{"glossy":true,"warm":true}'
+    image_output=$(env -u DISPLAY -u WAYLAND_DISPLAY "$out/bin/nixray" --expr \
+      'builtins.raylibImagePixel (builtins.raylibGenImage { width = 1; height = 1; color = [17 34 51 255]; }) { x = 0; y = 0; }')
+    printf '%s\n' "$image_output"
+    printf '%s\n' "$image_output" | grep -q '^\[17,34,51,255\]$'
+    if ! image_demo=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+      "$out/bin/nixray" "$out/share/nixray/examples/images.nix" --arg hidden true --arg maxFrames 2 2>&1)
+    then
+      printf '%s\n' "$image_demo" >&2
+      exit 1
+    fi
+    printf '%s\n' "$image_demo"
+    printf '%s\n' "$image_demo" | grep -q '"frames":2'
     xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck

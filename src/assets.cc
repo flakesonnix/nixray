@@ -74,8 +74,12 @@ AssetSpecs assetSpecs(EvalState & state, PosIdx pos, Value * value)
     entries("textures", [&](std::string name, Value & entry) {
         TextureSpec texture;
         if (entry.type() == nAttrs) {
-            r.fields(entry, {"path", "filter", "wrap"});
-            texture.path = path(r.required(entry, "path"));
+            r.fields(entry, {"path", "image", "filter", "wrap"});
+            auto * sourceImage = r.optional(entry, "image");
+            if (sourceImage) {
+                if (r.optional(entry, "path")) r.fail("texture asset requires exactly one of 'path' or 'image'");
+                texture.image = imageValue(state, pos, *sourceImage);
+            } else texture.path = path(r.required(entry, "path"));
             texture.options = textureOptions(r, entry);
         } else texture.path = path(entry);
         specs.textures.emplace(std::move(name), std::move(texture));
@@ -183,8 +187,9 @@ Assets::Assets(const AssetSpecs & specs, const Reader & r)
 {
     for (const auto & [name, spec] : specs.textures) {
         std::unique_ptr<Texture2D, TextureDeleter> texture(new Texture2D{});
-        *texture = LoadTexture(spec.path.c_str());
-        if (!IsTextureValid(*texture)) r.fail("could not load texture '" + name + "' from '" + spec.path + "'");
+        *texture = spec.image ? LoadTextureFromImage(spec.image->value) : LoadTexture(spec.path.c_str());
+        if (!IsTextureValid(*texture)) r.fail(spec.image ? "could not upload image texture '" + name + "'"
+                                                       : "could not load texture '" + name + "' from '" + spec.path + "'");
         applyTextureOptions(*texture, spec.options);
         textureOptions.emplace(name, spec.options);
         textures.emplace(name, std::move(texture));
