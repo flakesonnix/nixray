@@ -37,6 +37,7 @@ struct ShaderAsset {
 struct ShaderState {
     const ShaderAsset * asset = nullptr;
     UniformValues uniforms;
+    bool explicitScope = false;
 };
 
 UniformValues uniformSpecs(nix::EvalState & state, nix::PosIdx pos, nix::Value * value);

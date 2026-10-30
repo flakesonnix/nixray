@@ -1,9 +1,9 @@
 # nixray
 
 A native **Nix evaluator plugin** backed by [raylib](https://github.com/raysan5/raylib).
-Open a window, draw 2D graphics, and handle keyboard/mouse input directly from Nix.
-Supports 2D primitives, textures, and custom fonts. This is not a binding to
-raylib's entire API (no audio or 3D yet).
+Open a window, draw 2D/3D graphics, handle input, and play audio directly from Nix.
+Includes textures, custom fonts, shaders, models, and opt-in directional lighting.
+This is not a binding to raylib's entire API.
 
 ## Run
 
@@ -362,6 +362,8 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `clip` | `x`, `y`, `width`, `height`, `commands` |
 | `camera2D` | `camera`, `commands` |
 | `camera3D` | `camera`, `commands` (3D children only) |
+| `lighting` | `lights`, `commands` (inside `camera3D`) |
+| `material` | `commands` (inside `lighting`) |
 | `blend` | `mode`, `commands` |
 | `shader` | `shader` (asset name), `commands` |
 | `paint` | `texture` (render texture name), `commands` |
@@ -387,6 +389,8 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `splineLinear`, `splineBasis`, `splineCatmullRom`, `splineBezierQuadratic`, `splineBezierCubic` | `points = [ { x; y; } ... ]`, `thickness`, `color` |
 | `pixel` | `x`, `y`, `color` |
 | `fps` | `x`, `y` |
+
+3D primitive and model command fields are listed in their sections below.
 
 For example, `ray.clear ray.colors.white` constructs
 `{ op = "clear"; color = [ 255 255 255 255 ]; }`. Other constructors take
@@ -561,7 +565,7 @@ Coordinates are absolute window coordinates, not offsets from the parent clip.
 integers. Bounds are safely clamped to the window; the right and bottom edges
 are excluded. Nested clips intersect their parent's region and restore it on
 exit. Leaving the outermost clip restores unclipped drawing, including in
-subsequent frames. Clips, cameras, blends, shaders and paints share a maximum
+subsequent frames. All drawing scopes, including lighting/materials, share a maximum
 nesting depth of 64 scopes.
 
 The scope applies to shapes, text, textures and `clear`. Clears affect only the
@@ -654,7 +658,7 @@ Surface aspect is checked again when assets/window dimensions are known. Clip
 planes retain the linked raylib defaults; near/far controls are not exposed.
 
 The scene uses raylib's right-handed coordinates, with Y up. These commands must
-appear inside a `camera3D`, directly or through clips/blends/shaders:
+appear inside a `camera3D`, directly or through clips/blends/shaders or lighting/materials:
 
 | `op` | Required fields besides `op` | Optional fields |
 | --- | --- | --- |
@@ -684,7 +688,7 @@ No lighting is added automatically: default rendering is unlit vertex color.
 depth attachment. Clips remain absolute surface coordinates. A 3D pass inside a
 2D camera suspends that camera and restores it on exit; subsequent 2D HUD drawing
 has depth testing disabled. Nested 3D cameras, 2D drawing/camera commands and paint
-scopes inside a 3D pass are rejected. All cameras, clips, blends, shaders and paints
+scopes inside a 3D pass are rejected. All drawing scopes, including lighting/materials,
 share the existing 64-scope budget.
 
 Try `nix run . -- examples/three-d.nix`: WASD moves the camera, P changes projection,
@@ -737,9 +741,9 @@ of one asset can be drawn in one frame without persistent pose leakage.
 and remains usable after window close. There are no manual integer handles,
 load/unload drawing commands, raw mesh pointers or GPU resources in Nix values.
 
-Models honor clips, depth, blends, fragment shader scopes and render textures.
-Imported diffuse colors/textures render through raylib materials; lighting/PBR
-controls, morph targets and custom vertex stages remain unexposed. Shader overrides
+Models honor clips, depth, blends, fragment shader scopes, lighting/materials and render textures.
+Imported diffuse colors/textures render through raylib materials; PBR controls,
+morph targets and custom vertex stages remain unexposed. Shader overrides
 and wireframe mode are restored after each draw. Models, animations and owned
 imported textures are released before window closure, also on partial loading or
 callback errors; shared default textures/shaders are never freed as model assets.
@@ -754,6 +758,84 @@ model names, imported geometry or animation bounds without loading assets.
 Try `nix run . -- examples/model.nix`: a hand-authored OBJ pyramid and embedded-data
 glTF skeletal asset are drawn beside a bind-pose wireframe. Space pauses animation;
 all playback/frame-selection logic is plain Nix.
+
+### Directional lighting and materials
+
+Lighting is opt-in inside `camera3D`; existing scenes remain unlit. Wrap solid
+`cube`, `sphere`, `plane` and `model` commands in a `lighting` scope:
+
+```nix
+ray.camera3D {
+  camera = {};
+  commands = [
+    (ray.lighting {
+      ambient = [ 0.15 0.15 0.15 ];
+      lights = [
+        { direction = { x = -1; y = -2; z = -2; };
+          color = [ 1 0.8 0.6 ]; intensity = 0.8; }
+      ];
+      commands = [
+        (ray.material {
+          diffuse = ray.colors.orange;
+          specular = 0.7; shininess = 64;
+          commands = [
+            (ray.sphere { position = { x = 0; y = 0; z = 0; };
+              radius = 1; color = ray.colors.white; })
+          ];
+        })
+      ];
+    })
+  ];
+}
+```
+
+`lighting` requires `lights` (zero to four directional light sets) and `commands`.
+Optional `ambient` defaults to `[ 0.15 0.15 0.15 ]`. Ambient and light `color`
+use exactly three finite numbers in `0..1`, **not** byte RGBA drawing colors.
+Each light requires a nonzero `direction = { x; y; z; }` of finite numbers in
+raylib's float range; it is normalized before float conversion. Direction is
+the **world-space direction in which light travels**, so `{ x = 0; y = -1;
+z = 0; }` illuminates upward-facing surfaces. Optional `color` defaults to
+`[ 1 1 1 ]`, and `intensity` defaults to `1`, in `0..16`. Empty lights retain
+ambient illumination only; there is no implicit directional light.
+
+`material` requires a surrounding `lighting` and a `commands` list. Its optional
+fields are `diffuse` (byte RGBA, default white), `specular` (strength `0..1`,
+default `0.5`) and `shininess` (exponent `1..256`, default `32`). Diffuse multiplies
+primitive color or imported model texture/material color and command tint;
+its alpha multiplies their alpha. Specular is an untinted highlight colored
+by the light. Per-fragment Blinn–Phong shading combines ambient, Lambert diffuse
+and front-lit specular; orthographic views use a constant view direction.
+Calculations use sampled colors directly, with no gamma correction, distance
+attenuation, tone mapping or shadows. Output clamps to the render target's range.
+Imported roughness, metallic, normal and specular maps are not used by this shader.
+
+Nested lighting scopes replace ambient/lights while retaining the active material.
+Nested material scopes replace **all** material fields with their own values/defaults,
+rather than merging omitted fields with the parent. Both restore their parent on
+exit; queued geometry is flushed before uniform changes, including same-program
+nesting. Wires (`modelWires` included), `line3D` and `grid` remain unlit and ignore
+material overrides. `clear` is likewise unaffected. Normal clip/blend/depth rules
+still apply, including native depth writes for transparent surfaces.
+
+Authored vertex normals are transformed and normalized. If any mesh lacks normals,
+the model uses flat face normals derived from transformed geometry; OBJ files with
+missing or partial face-normal references also use this model-wide fallback,
+instead of raylib's fabricated up-vector normals. A zero interpolated normal uses
+the same face fallback. Degenerate faces have no diffuse/specular contribution.
+Skeletal poses retain native animated normals when available.
+
+Custom `shader` and `lighting` scopes cannot overlap in either nesting order.
+A paint inside an enclosing custom shader still starts with a fresh shader state,
+so a lit 3D scene may be painted there and post-processed when stamped later.
+Lighting/material scopes share the 64-level drawing-scope budget and are fully
+checked by `ray.validate` without a display. The private GLSL 330 lighting program
+loads lazily on the first solid lit command, is reused within that window, and is
+released before window close, including on evaluation errors.
+
+Try `nix run . -- examples/lighting.nix`: Space switches glossy/matte materials;
+L changes the key light from warm to cool. Models, primitives, scene controls and
+all interaction logic are plain Nix.
 
 ### Blend modes
 
@@ -1450,7 +1532,12 @@ text placement, custom fonts, texture orientation,
 scaling, crops, rotations, tint, and alpha blending, plus render texture
 painting, stamp orientation/mirroring, crop and scaling, cross-frame persistence,
 incremental painting, clips/cameras inside targets, and transparent initialization. RGB comparisons are exact,
-except for a one-step quantization tolerance in fractional blend checks.
+except for small quantization/interpolation tolerances in fractional blends and 3D lighting.
+3D tests cover projection, depth, primitive/model transforms, imported textures,
+skeletal pose isolation, directional light colors, material nesting, specular/view
+directions, flat-normal fallback and dense-geometry batch flushes. A native ownership
+hook checks that models, animations, imported textures and the lighting program are
+released before window close, including after evaluation failures.
 Input tests preload a separate polling-state fixture for release edges, wheel
 axes, UTF-8 queues and snapshot lifetime checks. They do not require physical
 devices or claim to cover OS event delivery or IME integration. Audio tests use

@@ -12,6 +12,7 @@
 #include "shader.hh"
 #include "three_d.hh"
 #include "model.hh"
+#include "lighting.hh"
 
 #include <rlgl.h>
 #include <utility>
@@ -20,15 +21,22 @@ namespace nixray {
 
 namespace {
 
+struct Scene3D {
+    Camera3D camera;
+    std::optional<LightingSpec> lighting;
+    MaterialSpec material;
+};
+
 // Parse every command before BeginDrawing: evaluation errors cannot leave an
 // unfinished drawing batch, and command execution never re-enters the evaluator.
 // activeTexture names a render texture currently receiving output, if any.
 std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & value, const Assets * assets,
                                      std::optional<ClipBounds> parent, std::optional<Camera2D> activeCamera,
                                      const std::string * activeTexture, BlendMode activeBlend,
-                                     const ShaderState & activeShader, unsigned depth, bool in3D)
+                                     const ShaderState & activeShader, unsigned depth, std::optional<Scene3D> scene)
 {
     Reader r(state, pos);
+    bool in3D = scene.has_value();
     state.forceList(value, pos, context);
     std::vector<Command> result;
     result.reserve(value.listSize());
@@ -36,27 +44,53 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
     for (auto * entry : values) {
         auto op = r.string(r.required(*entry, "op"));
         bool model = op == "model" || op == "modelWires";
-        if (in3D && !isShape3D(op) && !model && op != "clip" && op != "blend" && op != "shader" && op != "clear")
+        if (in3D && !isShape3D(op) && !model && op != "clip" && op != "blend" && op != "shader" && op != "clear" && op != "lighting" && op != "material")
             r.fail("drawing operation '" + op + "' is not supported inside camera3D");
         if (isShape3D(op) || model) {
             if (!in3D) r.fail("3D drawing operation '" + op + "' requires a camera3D scope");
-            result.emplace_back(model ? modelCommand(state, pos, *entry, op, assets, activeShader.asset ? &activeShader.asset->program : nullptr)
-                                      : shape3DCommand(state, pos, *entry, op));
+            bool solid = op == "model" || op == "cube" || op == "sphere" || op == "plane";
+            const LightingShader * lighting = scene->lighting && solid && assets ? &assets->lighting(r) : nullptr;
+            const Shader * shader = lighting ? &lighting->resource.program : activeShader.asset ? &activeShader.asset->program : nullptr;
+            auto draw = model ? modelCommand(state, pos, *entry, op, assets, shader) : shape3DCommand(state, pos, *entry, op);
+            if (lighting) {
+                bool normals = true;
+                if (model) {
+                    auto name = r.string(r.required(*entry, "model"));
+                    normals = assets->model(name)->hasVertexNormals;
+                }
+                draw = litCommand(*lighting, *scene->lighting, scene->material, scene->camera, model, normals, std::move(draw));
+            }
+            result.emplace_back(std::move(draw));
             continue;
         }
         if (op == "shader") {
+            if (scene && scene->lighting) r.fail("custom shader and lighting scopes must not overlap");
             if (depth >= 64) r.fail("shader nesting must not exceed 64 levels");
             auto shader = shaderState(state, pos, *entry, assets);
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, activeCamera,
-                                         activeTexture, activeBlend, shader, depth + 1, in3D);
+                                         activeTexture, activeBlend, shader, depth + 1, scene);
             result.emplace_back(shaderCommand(std::move(shader), activeShader, std::move(batch)));
         } else if (op == "blend") {
             if (depth >= 64) r.fail("blend nesting must not exceed 64 levels");
             r.fields(*entry, {"op", "mode", "commands"});
             auto mode = blendMode(r, r.required(*entry, "mode"));
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, activeCamera,
-                                         activeTexture, mode, activeShader, depth + 1, in3D);
+                                         activeTexture, mode, activeShader, depth + 1, scene);
             result.emplace_back(blendCommand(mode, activeBlend, std::move(batch)));
+        } else if (op == "lighting" || op == "material") {
+            if (!scene) r.fail(op + " scope requires a camera3D scope");
+            if (depth >= 64) r.fail(op + " nesting must not exceed 64 levels");
+            auto child = *scene;
+            if (op == "lighting") {
+                if (activeShader.explicitScope) r.fail("custom shader and lighting scopes must not overlap");
+                child.lighting = lightingSpec(state, pos, *entry);
+            } else {
+                if (!child.lighting) r.fail("material scope requires a lighting scope");
+                child.material = materialSpec(state, pos, *entry);
+            }
+            auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, activeCamera,
+                                         activeTexture, activeBlend, activeShader, depth + 1, std::move(child));
+            result.emplace_back([batch = std::move(batch)] { for (const auto & command : batch) command(); });
         } else if (op == "camera3D") {
             if (depth >= 64) r.fail("camera nesting must not exceed 64 levels");
             r.fields(*entry, {"op", "camera", "commands", "clearDepth"});
@@ -69,20 +103,20 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
                 validateProjection3D(r, camera, width/height);
             }
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, activeCamera,
-                                         activeTexture, activeBlend, activeShader, depth + 1, true);
+                                         activeTexture, activeBlend, activeShader, depth + 1, Scene3D{camera, std::nullopt, {}});
             result.emplace_back(camera3DCommand(r, camera, activeCamera, clearDepth, assets != nullptr, std::move(batch)));
         } else if (op == "camera2D") {
             if (depth >= 64) r.fail("camera nesting must not exceed 64 levels");
             r.fields(*entry, {"op", "camera", "commands"});
             auto camera = cameraSpec(r, r.required(*entry, "camera"));
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, parent, camera,
-                                         activeTexture, activeBlend, activeShader, depth + 1, false);
+                                         activeTexture, activeBlend, activeShader, depth + 1, std::nullopt);
             result.emplace_back(cameraCommand(camera, activeCamera, std::move(batch)));
         } else if (op == "clip") {
             if (depth >= 64) r.fail("clip nesting must not exceed 64 levels");
             auto bounds = clipBounds(r, *entry, parent);
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, bounds, activeCamera,
-                                         activeTexture, activeBlend, activeShader, depth + 1, in3D);
+                                         activeTexture, activeBlend, activeShader, depth + 1, scene);
             result.emplace_back(clipCommand(bounds, parent, std::move(batch)));
         } else if (op == "paint") {
             if (depth >= 64) r.fail("paint nesting must not exceed 64 levels");
@@ -100,7 +134,7 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             // Paint children start a fresh texture coordinate system without
             // inherited clip bounds, cameras, blend modes or shaders.
             auto batch = compileCommands(state, pos, r.required(*entry, "commands"), assets, std::nullopt,
-                                         std::nullopt, &name, BLEND_ALPHA, {}, depth + 1, false);
+                                         std::nullopt, &name, BLEND_ALPHA, {}, depth + 1, std::nullopt);
             result.emplace_back(paintCommand(target, parent, activeCamera, activeBlend, activeShader, clear, std::move(batch)));
         } else if (op == "clear") {
             r.fields(*entry, {"op", "color"});
@@ -170,7 +204,7 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
 
 std::vector<Command> commands(EvalState & state, PosIdx pos, Value & value, const Assets * assets)
 {
-    return compileCommands(state, pos, value, assets, std::nullopt, std::nullopt, nullptr, BLEND_ALPHA, {}, 0, false);
+    return compileCommands(state, pos, value, assets, std::nullopt, std::nullopt, nullptr, BLEND_ALPHA, {}, 0, std::nullopt);
 }
 
 } // namespace nixray

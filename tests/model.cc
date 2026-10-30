@@ -3,12 +3,14 @@
 #include <rlgl.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <dlfcn.h>
 #include <set>
 
 namespace {
 int models = 0, animations = 0;
 std::set<unsigned> importedTextures;
+std::set<unsigned> lightingShaders;
 template<typename F> F original(const char * name)
 {
     auto f = reinterpret_cast<F>(dlsym(RTLD_NEXT, name));
@@ -55,9 +57,22 @@ extern "C" void UnloadTexture(Texture2D texture)
     if (importedTextures.erase(texture.id)) trace("unload-imported-texture");
     original<void (*)(Texture2D)>("UnloadTexture")(texture);
 }
+extern "C" Shader LoadShaderFromMemory(const char * vertex, const char * fragment)
+{
+    auto shader = original<Shader (*)(const char *, const char *)>("LoadShaderFromMemory")(vertex, fragment);
+    if (vertex && std::strstr(vertex, "nixrayLighting") && shader.id != rlGetShaderIdDefault()) {
+        lightingShaders.insert(shader.id); trace("load-lighting");
+    }
+    return shader;
+}
+extern "C" void UnloadShader(Shader shader)
+{
+    if (lightingShaders.erase(shader.id)) trace("unload-lighting");
+    original<void (*)(Shader)>("UnloadShader")(shader);
+}
 extern "C" void CloseWindow()
 {
-    if (models || animations || !importedTextures.empty()) {
+    if (models || animations || !importedTextures.empty() || !lightingShaders.empty()) {
         std::fputs("nixray model fixture: native resources survived until window close\n", stderr); std::abort();
     }
     trace("close");

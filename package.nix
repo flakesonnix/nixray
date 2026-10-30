@@ -195,6 +195,14 @@ EOF
     fi
     printf '%s\n' "$builtin_output"
     printf '%s\n' "$builtin_output" | grep -q '"frames":2,"state":2'
+    if ! lighting_output=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+      "$out/bin/nixray" "$out/share/nixray/examples/lighting.nix" --arg hidden true --arg maxFrames 2 2>&1)
+    then
+      printf '%s\n' "$lighting_output" >&2
+      exit 1
+    fi
+    printf '%s\n' "$lighting_output"
+    printf '%s\n' "$lighting_output" | grep -q '"frames":2,"state":{"glossy":true,"warm":true}'
     xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck

@@ -166,6 +166,7 @@ ShaderState shaderState(EvalState & state, PosIdx pos, Value & value, const Asse
     auto name = r.string(r.required(value, "shader"));
     if (name.empty()) r.fail("shader name must not be empty");
     ShaderState result;
+    result.explicitScope = true;
     if (assets) {
         result.asset = assets->shader(name);
         if (!result.asset) r.fail("unknown shader '" + name + "'");

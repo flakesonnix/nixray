@@ -299,4 +299,10 @@ const ModelAsset * Assets::model(const std::string & name) const
     return found == models.end() ? nullptr : found->second.get();
 }
 
+const LightingShader & Assets::lighting(const Reader & r) const
+{
+    if (!lightingProgram) lightingProgram = loadLightingShader(r);
+    return *lightingProgram;
+}
+
 } // namespace nixray

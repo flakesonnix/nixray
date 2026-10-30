@@ -22,6 +22,7 @@ struct ModelAsset {
     int animationCount = 0;
     int64_t vertexCount = 0, triangleCount = 0;
     BoundingBox bounds{};
+    bool hasVertexNormals = true;
     std::vector<std::vector<BoundingBox>> poseBounds;
 
     ModelAsset() = default;

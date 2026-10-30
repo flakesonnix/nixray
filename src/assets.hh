@@ -3,6 +3,7 @@
 #include <nix/expr/eval.hh>
 #include "shader.hh"
 #include "model.hh"
+#include "lighting.hh"
 #include <raylib.h>
 #include <map>
 #include <memory>
@@ -70,6 +71,7 @@ class Assets {
     std::map<std::string, std::unique_ptr<Music, MusicDeleter>> musicTracks;
     std::set<std::string> seekableMusic;
     std::vector<std::string> soundLabels, musicLabels;
+    mutable std::unique_ptr<LightingShader> lightingProgram;
     std::map<std::string, std::unique_ptr<ModelAsset>> models;
     std::vector<std::string> modelLabels;
 
@@ -91,6 +93,7 @@ public:
     void updateMusic() const;
     const ModelAsset * model(const std::string & name) const;
     const std::vector<std::string> & modelNames() const { return modelLabels; }
+    const LightingShader & lighting(const Reader & reader) const;
 };
 
 } // namespace nixray

@@ -5,15 +5,47 @@
 #include <raymath.h>
 #include <rlgl.h>
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <utility>
 
 namespace nixray {
 
 namespace {
+
+bool objHasNormals(const std::string & path)
+{
+    // raylib's OBJ loader allocates normals even when they were absent and
+    // substitutes (0,1,0). Pointers alone cannot distinguish authored normals.
+    std::ifstream input(path);
+    if (!input) return false;
+    bool normal = false, face = false;
+    for (std::string line; std::getline(input, line);) {
+        std::istringstream fields(line);
+        std::string kind;
+        fields >> kind;
+        if (kind == "vn") normal = true;
+        if (kind != "f") continue;
+        face = true;
+        for (std::string vertex; fields >> vertex;) {
+            if (vertex.starts_with('#')) break;
+            if (vertex == "\\") continue;
+            auto first = vertex.find('/'), last = vertex.rfind('/');
+            if (first == std::string::npos || first == last) return false;
+            std::string_view index(vertex.data() + last + 1, vertex.size() - last - 1);
+            if (index.starts_with('+')) index.remove_prefix(1);
+            int number = 0;
+            auto parsed = std::from_chars(index.data(), index.data() + index.size(), number);
+            if (parsed.ec != std::errc{} || parsed.ptr != index.data() + index.size() || number == 0) return false;
+        }
+    }
+    return input.eof() && normal && face;
+}
 
 bool finite(Matrix m)
 {
@@ -112,6 +144,7 @@ std::unique_ptr<ModelAsset> loadModelAsset(const ModelSpec & spec, const std::st
     for (int i = 0; i < m.materialCount; ++i) if (!m.materials[i].maps) r.fail("model material maps are missing");
     for (int i = 0; i < m.meshCount; ++i) {
         const auto & mesh = m.meshes[i];
+        if (!mesh.normals) asset->hasVertexNormals = false;
         if (!mesh.vertices || !mesh.vboId || !mesh.vboId[0] || mesh.vertexCount < 1 || mesh.vertexCount > 1000000 ||
             mesh.triangleCount < 1 || mesh.triangleCount > 1000000 || m.meshMaterial[i] < 0 || m.meshMaterial[i] >= m.materialCount ||
             (mesh.normals && !mesh.vboId[2]) || (mesh.texcoords && !mesh.vboId[1]) || (mesh.indices && !mesh.vboId[6]))
@@ -143,6 +176,7 @@ std::unique_ptr<ModelAsset> loadModelAsset(const ModelSpec & spec, const std::st
             }
         }
     }
+    if (IsFileExtension(spec.path.c_str(), ".obj")) asset->hasVertexNormals &= objHasNormals(spec.path);
     asset->bounds = GetModelBoundingBox(m);
     transformedBounds(r, asset->bounds, m.transform);
     if (m.boneCount && (!m.bones || !m.bindPose)) r.fail("model skeleton is incomplete");

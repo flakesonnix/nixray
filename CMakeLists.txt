@@ -23,6 +23,7 @@ add_library(nixray MODULE
     src/blend.cc
     src/camera.cc
     src/three_d.cc
+    src/lighting.cc
     src/collision.cc
     src/render_texture.cc
     src/shader.cc

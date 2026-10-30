@@ -98,6 +98,8 @@ rec {
   clip = args: args // { op = "clip"; };
   camera2D = args: args // { op = "camera2D"; };
   camera3D = args: args // { op = "camera3D"; };
+  lighting = args: args // { op = "lighting"; };
+  material = args: args // { op = "material"; };
   cube = args: args // { op = "cube"; };
   cubeWires = args: args // { op = "cubeWires"; };
   sphere = args: args // { op = "sphere"; };
