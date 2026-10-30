@@ -233,6 +233,14 @@ EOF
     fi
     printf '%s\n' "$drawing_demo"
     printf '%s\n' "$drawing_demo" | grep -q '"frames":2,"state":{"reverse":false,"thickness":4}'
+    if ! text_demo=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+      "$out/bin/nixray" "$out/share/nixray/examples/text-layout.nix" --arg hidden true --arg maxFrames 2 2>&1)
+    then
+      printf '%s\n' "$text_demo" >&2
+      exit 1
+    fi
+    printf '%s\n' "$text_demo"
+    printf '%s\n' "$text_demo" | grep -q '"frames":2'
     xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck

@@ -120,6 +120,8 @@ rec {
   shader = args: args // { op = "shader"; };
   paint = args: args // { op = "paint"; };
   text = args: args // { op = "text"; };
+  textCodepoint = args: args // { op = "textCodepoint"; };
+  textCodepoints = args: args // { op = "textCodepoints"; };
   texture = args: args // { op = "texture"; };
   textureNPatch = args: args // { op = "textureNPatch"; };
   rectangle = args: args // { op = "rectangle"; };

@@ -17,6 +17,7 @@ from input_cases import InputCases
 from device_input_cases import DeviceInputCases
 from window_cases import WindowCases
 from text_cases import TextCases
+from text_advanced_cases import TextAdvancedCases
 from shape_cases import ShapeCases
 from drawing_cases import DrawingCases
 from drawing_extra_cases import DrawingExtraCases
@@ -53,7 +54,7 @@ CONFIG = '{ width = 64; height = 64; hidden = true; fps = 0; maxFrames = 3; }'
 
 
 class PluginTests(
-    AssetCases, TextureCases, TextureControlCases, TextureAdvancedCases, PixelCases, InputCases, TextCases, ShapeCases, DrawingCases, DrawingExtraCases,
+    AssetCases, TextureCases, TextureControlCases, TextureAdvancedCases, PixelCases, InputCases, TextCases, TextAdvancedCases, ShapeCases, DrawingCases, DrawingExtraCases,
     ImageCases, LightingCases, ModelCases, ThreeDCases, WindowCases, DeviceInputCases, CurveCases, ClipCases, CameraCases, RenderCases,
     CollisionCases, CollisionExtraCases, BlendCases, ShaderCases, AudioCases, AudioControlCases, SynthCases, unittest.TestCase,
 ):

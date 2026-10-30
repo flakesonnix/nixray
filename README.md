@@ -373,6 +373,8 @@ nonnegative integers or floats, as do ellipse/ring radii and line thickness.
 | `shader` | `shader` (asset name), `commands` |
 | `paint` | `texture` (render texture name), `commands` |
 | `text` | `text`, `x`, `y`, `size`, `color` |
+| `textCodepoint` | `codepoint`, `x`, `y`, `size`, `color` |
+| `textCodepoints` | `codepoints`, `x`, `y`, `size`, `color` |
 | `texture` | `texture` (asset name), `x`, `y` |
 | `textureNPatch` | `texture`, `x`, `y`, `width`, `height`, `borders = { left; top; right; bottom; }` |
 | `rectangle`, `rectangleLines` | `x`, `y`, `width`, `height`, `color` |
@@ -414,6 +416,9 @@ scale is a finite positive integer or float. Scaled dimensions must fit finite
 raylib coordinates. Defaults draw the image at native size without rotation.
 `text` accepts an optional `font` asset name; omitting it preserves raylib's
 default-font behavior.
+
+All three text commands also accept numeric `spacing`, clockwise `rotation` and
+pixel `origin`; see [Text layout and codepoints](#text-layout-and-codepoints).
 
 `origin = { x; y; }` selects a texture's pivot offset in scaled destination
 pixels, not normalized UVs or source pixels. Both coordinates accept finite
@@ -1489,18 +1494,21 @@ nix run . -- examples/assets.nix --arg image ./logo.png --arg font ./ui.ttf
 
 ### Text measurement
 
-`frame.measureText { text; size; font ? ...; }` returns float attributes
-`{ width; height; }` using the default font or a named loaded font. `text` is a
+`frame.measureText { text; size; font ? ...; spacing ? ...; }` returns float attributes
+`{ width; height; }` using the default font or a named loaded font. Alternatively,
+provide exactly one of `codepoint` or `codepoints` instead of `text`, with the
+semantics below. `text` is a
 context-free UTF-8 string without NUL bytes; `size` is a positive signed 32-bit
 integer, just as for drawing. Unknown attributes/font names are errors.
 
 Measurement uses raylib's logical layout metrics, not tight ink/pixel bounds.
 It handles Unicode codepoints, fallback glyphs and newlines with raylib's
-default two-pixel line gap. Custom fonts use one-pixel glyph spacing; omitting
-`font` matches `DrawText`'s minimum size of 10 and integer `size / 10` spacing.
+default two-pixel line gap, snapshotted with the metrics. Without explicit spacing,
+custom fonts use one-pixel glyph spacing; omitting `font` matches `DrawText`'s
+minimum size of 10 and integer `size / 10` spacing.
 Empty strings return zero dimensions, and newline-only widths are clamped to
 zero. Missing glyphs are not synthesized. The function retains immutable CPU
-metrics, so it remains safe to call after its original window has closed or
+metrics and line gap, so it remains safe to call after its original window has closed or
 while another window is open; GPU resources are still released normally.
 
 For example, reuse the same text attributes for measuring and drawing:
@@ -1520,6 +1528,71 @@ in {
 
 Try `nix run . -- examples/text.nix --arg font ./ui.ttf` for explicit Unicode
 glyphs and a centered label with its measured layout box.
+
+### Text layout and codepoints
+
+`text`, `textCodepoint` and `textCodepoints` share integer `x`, `y`, positive
+integer `size`, byte RGBA `color`, optional named `font`, and these controls:
+
+- `spacing`: finite signed numeric tracking in drawing-coordinate units. Omitted
+  defaults are unchanged: `size / 10` (integer division, after clamping size to at
+  least 10) for the default font, or `1` for a custom font. Negative spacing may
+  overlap glyphs; overlapping pixels blend normally, not as a flattened label.
+- `rotation ? 0`: finite clockwise degrees, normalized modulo 360.
+- `origin ? { x = 0; y = 0; }`: finite numeric pixel offsets in the unrotated
+  text layout. This pivot is placed at `(x, y)` before rotation; negative/outside
+  pivots are allowed while native layout/transform coordinates stay finite.
+
+The default-font minimum size of 10 applies to **all three commands**, including
+when spacing/transforms are explicit. Named fonts retain exact positive sizes.
+Transforms leave following drawing unchanged and work inside 2D cameras, clips,
+blends, shaders and render textures. They do not create a new drawing scope.
+
+```nix
+let
+  label = { codepoints = [78 105 120 58 32 228]; size = 32; spacing = 3; };
+  metrics = frame.measureText label;
+in ray.textCodepoints (label // {
+  x = 320; y = 180; rotation = 30;
+  origin = { x = metrics.width / 2; y = metrics.height / 2; };
+  color = ray.colors.orange;
+})
+```
+
+`textCodepoints` takes a list of **0..4096 Unicode scalars**, integers in
+`0..1114111` excluding UTF-16 surrogates `55296..57343`. Repeats and U+0000 are
+valid: this is a counted array, not a NUL-terminated string. Empty arrays draw
+nothing after validation. Newlines break lines just as in UTF-8 text; spaces and
+tabs advance without drawing (tabs use native glyph advance, not tab stops).
+Missing glyphs retain the loaded font's native fallback behavior.
+
+`textCodepoint` instead draws **one literal glyph**. Even newline, tab and space
+are passed to glyph lookup, not interpreted as layout controls. If absent from
+the font, they draw its fallback, just like any missing scalar. `spacing` has no
+between-glyph effect for a single glyph. Font asset `codepoints` selection still
+requires distinct **nonzero** scalars; that separate atlas-loading schema has not
+changed. UTF-8 `text` continues to reject NUL bytes.
+
+`frame.measureText` accepts the same source/size/font/spacing fields, but not
+rotation/origin/position/color. Results remain **unrotated logical dimensions**,
+not transformed bounds or ink bounds. It preserves native line-width/count and
+glyph-advance rules, including clamping negative widths to zero. Strong negative
+tracking can make reported width smaller than actual ink; newline-only input
+with negative spacing can even have positive logical width. Literal single
+newlines measure a glyph, whereas array/string newlines measure line breaks.
+The retained function owns only CPU metric copies and uses no later window state.
+
+Finite native pen advances, glyph rectangles and transform arithmetic are checked
+before drawing, including off-screen text. This may reject extreme finite spacing
+when cumulative advances overflow. Pure `ray.validate` checks source types/scalars,
+list limits and numeric fields without fonts or a display; font lookup and full
+layout bounds resolve during a real run. No shaping, kerning, bidirectional layout,
+IME composition or new font coverage is added by these controls.
+
+Try `nix run . -- examples/text-layout.nix`: the wheel changes signed tracking;
+Space toggles rotation. Strings and codepoint arrays use matching logical boxes,
+and literal single glyphs demonstrate native fallback. The demo is plain Nix and
+needs no external font file.
 
 ### Sprite sheets
 
@@ -1727,7 +1800,7 @@ Remaining dedicated drawing features include:
 | Area | Not exposed |
 | --- | --- |
 | 2D convenience/precision | Dedicated native `DrawLineStrip`/single-spline-segment entry points and float-coordinate overloads; dashes, rotated rectangles, thick contours and triangle fans/strips are implemented above |
-| Text | Rotated/pivoted text (`DrawTextPro`), configurable glyph spacing, direct codepoint-list entry points; normal UTF-8 text and custom glyph sets already work |
+| Text | Runtime line-gap mutation (`SetTextLineSpacing`) and float-coordinate/fractional-size entry points; rotation/pivots, signed tracking, direct scalars/arrays and UTF-8/custom glyph sets are implemented above |
 | 3D primitives | Native 3D circles, filled triangles/triangle strips, cylinders/cones and capsules (including native wire variants) |
 | Models/meshes | Point-cloud model drawing, nonuniform model-command scale, public custom/procedural mesh assets and instanced mesh drawing |
 | 3D textures/materials | Billboards, cubemaps, per-material texture-map reassignment and additional material-map shading; imported diffuse maps and scoped Blinn–Phong lighting already work |

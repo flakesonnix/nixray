@@ -149,8 +149,8 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             result.emplace_back(textureCommand(state, pos, *entry, assets, activeTexture));
         } else if (op == "textureNPatch") {
             result.emplace_back(texturePatchCommand(state, pos, *entry, assets, activeTexture));
-        } else if (op == "text") {
-            result.emplace_back(textCommand(state, pos, *entry, assets));
+        } else if (op == "text" || op == "textCodepoint" || op == "textCodepoints") {
+            result.emplace_back(textCommand(state, pos, *entry, op, assets));
         } else if (op == "lineBezier" || op == "splineLinear" || op == "splineBasis" || op == "splineCatmullRom" ||
                    op == "splineBezierQuadratic" || op == "splineBezierCubic") {
             result.emplace_back(curveCommand(state, pos, *entry, op));
