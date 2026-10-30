@@ -241,6 +241,14 @@ EOF
     fi
     printf '%s\n' "$text_demo"
     printf '%s\n' "$text_demo" | grep -q '"frames":2'
+    if ! primitives_demo=$(xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
+      "$out/bin/nixray" "$out/share/nixray/examples/primitives-3d.nix" --arg hidden true --arg maxFrames 2 2>&1)
+    then
+      printf '%s\n' "$primitives_demo" >&2
+      exit 1
+    fi
+    printf '%s\n' "$primitives_demo"
+    printf '%s\n' "$primitives_demo" | grep -q '"frames":2,"state":{"lit":true,"slices":16,"wires":false}'
     xvfb-run -a -s '-screen 0 800x600x24 -noreset' \
       python3 ../tests/test_launcher.py --launcher "$out/bin/nixray" --mesa ${mesa}
     runHook postInstallCheck

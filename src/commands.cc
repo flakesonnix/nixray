@@ -48,12 +48,14 @@ std::vector<Command> compileCommands(EvalState & state, PosIdx pos, Value & valu
             r.fail("drawing operation '" + op + "' is not supported inside camera3D");
         if (isShape3D(op) || model) {
             if (!in3D) r.fail("3D drawing operation '" + op + "' requires a camera3D scope");
-            bool solid = op == "model" || op == "cube" || op == "sphere" || op == "plane";
+            bool vertexNormals = op == "model" || op == "cube" || op == "sphere" || op == "plane";
+            bool solid = vertexNormals || op == "triangle3D" || op == "triangleStrip3D" || op == "cylinder" ||
+                         op == "cylinderEx" || op == "capsule";
             const LightingShader * lighting = scene->lighting && solid && assets ? &assets->lighting(r) : nullptr;
             const Shader * shader = lighting ? &lighting->resource.program : activeShader.asset ? &activeShader.asset->program : nullptr;
             auto draw = model ? modelCommand(state, pos, *entry, op, assets, shader) : shape3DCommand(state, pos, *entry, op);
             if (lighting) {
-                bool normals = true;
+                bool normals = vertexNormals;
                 if (model) {
                     auto name = r.string(r.required(*entry, "model"));
                     normals = assets->model(name)->hasVertexNormals;

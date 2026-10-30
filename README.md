@@ -738,6 +738,12 @@ appear inside a `camera3D`, directly or through clips/blends/shaders or lighting
 | `sphere`, `sphereWires` | `position`, `radius`, `color` | `rings ? 16`, `slices ? 16` |
 | `plane` | `position`, `width`, `length`, `color` | — |
 | `line3D` | `start`, `end`, `color` | — |
+| `circle3D` | `position`, `radius`, `color` | `rotationAxis ? { x = 0; y = 0; z = 1; }`, `rotation ? 0` |
+| `triangle3D` | `v1`, `v2`, `v3`, `color` | — |
+| `triangleStrip3D` | `points`, `color` | — |
+| `cylinder`, `cylinderWires` | `position`, `radiusTop`, `radiusBottom`, `height`, `color` | `slices ? 16` |
+| `cylinderEx`, `cylinderWiresEx` | `start`, `end`, `startRadius`, `endRadius`, `color` | `slices ? 16` |
+| `capsule`, `capsuleWires` | `start`, `end`, `radius`, `color` | `slices ? 16`, `rings ? 8` |
 | `grid` | `slices`, `spacing` | — |
 
 Positions are 3D sets; sizes, radius and spacing are finite nonnegative numbers.
@@ -748,6 +754,41 @@ the origin on XZ, use fixed gray colors, and truncate odd slice counts to the
 preceding even span. Zero extents/radii/spacing, grids with fewer than two slices,
 and collapsed lines draw nothing after full validation. Overflowing geometry
 bounds are errors. Matching `ray.cube`, `ray.sphere`, etc. construct these sets.
+
+`circle3D` is a native **36-segment outline**, initially on XY. Its nonzero
+`rotationAxis` is normalized, and finite axis-angle `rotation` is in degrees,
+normalized modulo 360 using raylib's right-handed rotation (not the 2D clockwise
+convention). This outline remains unlit.
+
+`triangle3D` takes three 3D points in **counterclockwise front-face order**.
+`triangleStrip3D` takes **3..4096** 3D points with native alternating triangle
+winding. Unlike the 2D fan/strip commands, these commands preserve supplied winding:
+back faces are culled, not automatically reversed or made double-sided. Degenerate
+triangles have no area; repeated strip vertices can connect separate sections.
+
+`cylinder`/`cylinderWires` put their **base** at `position`, extending `height`
+along +Y. `cylinderEx`/`cylinderWiresEx` instead put base/top centers at `start`/`end`,
+with the corresponding radii. Filled forms have closed caps wherever radius is
+nonzero. Set either radius to zero for a cone; low slice counts make pyramids.
+All cylinder/capsule `slices` are integers in `3..256`.
+
+Capsule `start`/`end` are hemisphere **centers**, so caps extend beyond the
+endpoints by `radius`. `rings` is an integer in **1..128 per hemisphere**, not
+the sphere command's ring count. Coincident endpoints draw a native capsule sphere
+using this tessellation. Zero capsule radius draws nothing. Zero-height/coincident
+endpoint cylinders and cylinders with both radii zero draw nothing, but still
+validate all fields. Equality uses native float coordinates after conversion.
+
+Endpoint primitives check native differences, lengths, perpendiculars and cross
+products before drawing. A nonzero direction whose float basis overflows or
+underflows is rejected even when the endpoints are individually finite or the
+radius is zero. Coincident endpoints retain the no-op/sphere behavior above.
+Geometry-bound checks are conservative and include intermediate rotated/basis
+sums, so some extremely large finite geometry is rejected during pure validation.
+
+Try `nix run . -- examples/primitives-3d.nix`: W toggles cylinder/capsule wire
+variants, L toggles lighting, and Up/Down change slices. Circles, triangles, cones,
+cylinders, capsules and the coincident-endpoint sphere use plain-Nix scene logic.
 
 By default each pass clears **only depth**, preserving color and respecting the
 active clip. `clearDepth = false` shares existing depth on that surface; compare
@@ -834,7 +875,8 @@ all playback/frame-selection logic is plain Nix.
 ### Directional lighting and materials
 
 Lighting is opt-in inside `camera3D`; existing scenes remain unlit. Wrap solid
-`cube`, `sphere`, `plane` and `model` commands in a `lighting` scope:
+`cube`, `sphere`, `plane`, `model`, `triangle3D`, `triangleStrip3D`, `cylinder`,
+`cylinderEx` and `capsule` commands in a `lighting` scope:
 
 ```nix
 ray.camera3D {
@@ -886,7 +928,7 @@ Nested lighting scopes replace ambient/lights while retaining the active materia
 Nested material scopes replace **all** material fields with their own values/defaults,
 rather than merging omitted fields with the parent. Both restore their parent on
 exit; queued geometry is flushed before uniform changes, including same-program
-nesting. Wires (`modelWires` included), `line3D` and `grid` remain unlit and ignore
+nesting. Wires (`modelWires` included), `circle3D`, `line3D` and `grid` remain unlit and ignore
 material overrides. `clear` is likewise unaffected. Normal clip/blend/depth rules
 still apply, including native depth writes for transparent surfaces.
 
@@ -896,6 +938,11 @@ missing or partial face-normal references also use this model-wide fallback,
 instead of raylib's fabricated up-vector normals. A zero interpolated normal uses
 the same face fallback. Degenerate faces have no diffuse/specular contribution.
 Skeletal poses retain native animated normals when available.
+Native triangles, cylinders and capsules do not emit vertex normals; their filled
+commands always use geometry-derived **flat-face normals**, never stale normals
+from earlier drawing. Increasing their tessellation reduces visible faceting but
+does not switch to smooth shading. Existing cubes/spheres/planes retain their
+native vertex normals.
 
 Custom `shader` and `lighting` scopes cannot overlap in either nesting order.
 A paint inside an enclosing custom shader still starts with a fresh shader state,
@@ -1801,7 +1848,6 @@ Remaining dedicated drawing features include:
 | --- | --- |
 | 2D convenience/precision | Dedicated native `DrawLineStrip`/single-spline-segment entry points and float-coordinate overloads; dashes, rotated rectangles, thick contours and triangle fans/strips are implemented above |
 | Text | Runtime line-gap mutation (`SetTextLineSpacing`) and float-coordinate/fractional-size entry points; rotation/pivots, signed tracking, direct scalars/arrays and UTF-8/custom glyph sets are implemented above |
-| 3D primitives | Native 3D circles, filled triangles/triangle strips, cylinders/cones and capsules (including native wire variants) |
 | Models/meshes | Point-cloud model drawing, nonuniform model-command scale, public custom/procedural mesh assets and instanced mesh drawing |
 | 3D textures/materials | Billboards, cubemaps, per-material texture-map reassignment and additional material-map shading; imported diffuse maps and scoped Blinn–Phong lighting already work |
 | Images/readback | GPU/screen-to-CPU readback, decoder animation frames, noise/text generators, channel/palette/border queries, blur/convolution/dither, image compositing/text/most CPU shape drawing, general pixel-format conversion and non-PNG/code exports |

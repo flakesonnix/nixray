@@ -115,6 +115,15 @@ rec {
   sphereWires = args: args // { op = "sphereWires"; };
   plane = args: args // { op = "plane"; };
   line3D = args: args // { op = "line3D"; };
+  circle3D = args: args // { op = "circle3D"; };
+  triangle3D = args: args // { op = "triangle3D"; };
+  triangleStrip3D = args: args // { op = "triangleStrip3D"; };
+  cylinder = args: args // { op = "cylinder"; };
+  cylinderWires = args: args // { op = "cylinderWires"; };
+  cylinderEx = args: args // { op = "cylinderEx"; };
+  cylinderWiresEx = args: args // { op = "cylinderWiresEx"; };
+  capsule = args: args // { op = "capsule"; };
+  capsuleWires = args: args // { op = "capsuleWires"; };
   grid = args: args // { op = "grid"; };
   blend = args: args // { op = "blend"; };
   shader = args: args // { op = "shader"; };

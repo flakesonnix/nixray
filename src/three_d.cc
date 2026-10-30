@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <raymath.h>
 #include <rlgl.h>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -40,6 +41,30 @@ void bounds(const Reader & r, Vector3 position, double x, double y, double z)
         std::abs(static_cast<double>(position.y)) + y > maximum ||
         std::abs(static_cast<double>(position.z)) + z > maximum)
         r.fail("3D geometry bounds must fit finite native coordinates");
+}
+
+bool zero(Vector3 v) { return v.x == 0 && v.y == 0 && v.z == 0; }
+
+Vector3 nativeUnit(const Reader & r, Vector3 v)
+{
+    // Match raymath's float operations: finite endpoints do not imply usable
+    // differences, squared lengths, perpendiculars or cross products.
+    float length = Vector3Length(v);
+    if (!std::isfinite(length) || length == 0) r.fail("3D endpoint basis must be finite and nondegenerate");
+    auto result = Vector3Normalize(v);
+    float unitLength = Vector3Length(result);
+    if (!std::isfinite(unitLength) || std::abs(unitLength - 1) > 0.001f)
+        r.fail("3D endpoint basis must be finite and nondegenerate");
+    return result;
+}
+
+void endpointBasis(const Reader & r, Vector3 start, Vector3 end)
+{
+    auto direction = Vector3Subtract(end, start);
+    if (zero(direction)) return; // Native cylinder no-op / capsule sphere case.
+    nativeUnit(r, direction);
+    auto b1 = nativeUnit(r, Vector3Perpendicular(direction));
+    nativeUnit(r, Vector3CrossProduct(b1, direction));
 }
 
 struct Mode3D {
@@ -113,12 +138,94 @@ Command camera3DCommand(const Reader & r, Camera3D camera, std::optional<Camera2
 bool isShape3D(const std::string & op)
 {
     return op == "cube" || op == "cubeWires" || op == "sphere" || op == "sphereWires" ||
-           op == "plane" || op == "line3D" || op == "grid";
+           op == "plane" || op == "line3D" || op == "grid" || op == "circle3D" ||
+           op == "triangle3D" || op == "triangleStrip3D" || op == "cylinder" || op == "cylinderWires" ||
+           op == "cylinderEx" || op == "cylinderWiresEx" || op == "capsule" || op == "capsuleWires";
 }
 
 Command shape3DCommand(EvalState & state, PosIdx pos, Value & value, const std::string & op)
 {
     Reader r(state, pos);
+    if (op == "circle3D") {
+        r.fields(value, {"op", "position", "radius", "rotationAxis", "rotation", "color"});
+        auto position = point(r, r.required(value, "position"));
+        float radius = r.number(r.required(value, "radius"), "radius", 0);
+        Vector3 axis{0, 0, 1};
+        if (auto * v = r.optional(value, "rotationAxis")) axis = point(r, *v);
+        double length = std::hypot(static_cast<double>(axis.x), static_cast<double>(axis.y), static_cast<double>(axis.z));
+        if (length == 0) r.fail("circle3D rotation axis must be nonzero");
+        axis = {static_cast<float>(axis.x/length), static_cast<float>(axis.y/length), static_cast<float>(axis.z/length)};
+        double angle = 0;
+        if (auto * v = r.optional(value, "rotation")) angle = r.numberDouble(*v, "rotation");
+        float rotation = static_cast<float>(std::fmod(angle, 360.0));
+        auto color = r.color(r.required(value, "color"));
+        // Bound intermediate rotated x/y sums too, not only the final circle.
+        bounds(r, position, 2.0*radius, 2.0*radius, 2.0*radius);
+        return [=] { if (radius > 0) DrawCircle3D(position, radius, axis, rotation, color); };
+    }
+    if (op == "triangle3D" || op == "triangleStrip3D") {
+        std::vector<Vector3> points;
+        if (op == "triangle3D") {
+            r.fields(value, {"op", "v1", "v2", "v3", "color"});
+            for (auto field : {"v1", "v2", "v3"}) points.push_back(point(r, r.required(value, field)));
+        } else {
+            r.fields(value, {"op", "points", "color"});
+            auto & list = r.required(value, "points");
+            state.forceList(list, pos, context);
+            if (list.listSize() < 3 || list.listSize() > 4096) r.fail("triangleStrip3D requires 3..4096 points");
+            points.reserve(list.listSize());
+            for (auto * v : list.listView()) points.push_back(point(r, *v));
+        }
+        auto color = r.color(r.required(value, "color"));
+        return [op, points = std::move(points), color] {
+            if (op == "triangle3D") DrawTriangle3D(points[0], points[1], points[2], color);
+            else DrawTriangleStrip3D(points.data(), points.size(), color);
+        };
+    }
+    if (op == "cylinder" || op == "cylinderWires") {
+        r.fields(value, {"op", "position", "radiusTop", "radiusBottom", "height", "slices", "color"});
+        auto position = point(r, r.required(value, "position"));
+        float top = r.number(r.required(value, "radiusTop"), "radiusTop", 0);
+        float bottom = r.number(r.required(value, "radiusBottom"), "radiusBottom", 0);
+        float height = r.number(r.required(value, "height"), "height", 0);
+        int slices = 16;
+        if (auto * count = r.optional(value, "slices")) slices = r.integer(*count, "slices", 3, 256);
+        auto color = r.color(r.required(value, "color"));
+        double radius = std::max(top, bottom);
+        bounds(r, position, radius, height, radius);
+        return [=] {
+            if (height == 0 || (top == 0 && bottom == 0)) return;
+            if (op == "cylinder") DrawCylinder(position, top, bottom, height, slices, color);
+            else DrawCylinderWires(position, top, bottom, height, slices, color);
+        };
+    }
+    if (op == "cylinderEx" || op == "cylinderWiresEx" || op == "capsule" || op == "capsuleWires") {
+        bool capsule = op == "capsule" || op == "capsuleWires";
+        if (capsule) r.fields(value, {"op", "start", "end", "radius", "slices", "rings", "color"});
+        else r.fields(value, {"op", "start", "end", "startRadius", "endRadius", "slices", "color"});
+        auto start = point(r, r.required(value, "start")), end = point(r, r.required(value, "end"));
+        float startRadius = r.number(r.required(value, capsule ? "radius" : "startRadius"), capsule ? "radius" : "startRadius", 0);
+        float endRadius = capsule ? startRadius : r.number(r.required(value, "endRadius"), "endRadius", 0);
+        int slices = 16, rings = 8;
+        if (auto * count = r.optional(value, "slices")) slices = r.integer(*count, "slices", 3, 256);
+        if (capsule) {
+            if (auto * count = r.optional(value, "rings")) rings = r.integer(*count, "rings", 1, 128);
+        }
+        auto color = r.color(r.required(value, "color"));
+        endpointBasis(r, start, end);
+        // Native vertices accumulate two basis terms for cylinders and three
+        // for caps. Conservative bounds cover the intermediate sums as well.
+        double radius = (capsule ? 3.0 : 2.0)*std::max(startRadius, endRadius);
+        bounds(r, start, radius, radius, radius);
+        bounds(r, end, radius, radius, radius);
+        return [=] {
+            if (startRadius == 0 && endRadius == 0) return;
+            if (op == "capsule") DrawCapsule(start, end, startRadius, slices, rings, color);
+            else if (op == "capsuleWires") DrawCapsuleWires(start, end, startRadius, slices, rings, color);
+            else if (op == "cylinderEx") DrawCylinderEx(start, end, startRadius, endRadius, slices, color);
+            else DrawCylinderWiresEx(start, end, startRadius, endRadius, slices, color);
+        };
+    }
     if (op == "grid") {
         r.fields(value, {"op", "slices", "spacing"});
         int slices = r.integer(r.required(value, "slices"), "slices", 0, 4096);
